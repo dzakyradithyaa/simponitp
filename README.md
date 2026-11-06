@@ -24,15 +24,14 @@ flowchart TD
 
     C --> E[View Map Layers]
     E --> F[View Recommendations]
-    C --> G[Custom Polygon]
+    C --> G[Create Custom Polygon]
     G --> H[Export KML/KMZ]
     C --> I[FAQ]
 
     D --> J[Upload Map Data]
     D --> K[Manage Map Layers and Versions]
     D --> L[Manage Agricultural Areas]
-    D --> M[Create Custom Polygon]
-    M --> H
+    D --> G
     D --> N[Generate 100 x 100 m Grid]
     D --> O[Configure Recommendations]
     D --> P[Manage User Accounts]
