@@ -23,22 +23,18 @@ flowchart TD
     B -->|Admin: Full Access| D[Admin Panel]
 
     C --> E[View Map Layers]
-    E --> F[View Recommendations]
+    E --> F[Automatically Generated Recommendations]
     C --> G[Create Custom Polygon]
     G --> H[Export KML/KMZ]
     C --> I[FAQ]
 
     D --> J[Upload Map Data]
     D --> K[Manage Map Layers and Versions]
-    D --> L[Manage Agricultural Areas]
     D --> G
-    D --> N[Generate 100 x 100 m Grid]
-    D --> O[Configure Recommendations]
-    D --> P[Manage User Accounts]
+    D --> N[Manage User Accounts]
 
-    K --> Q[Future: NDVI and Soil Analysis]
-    Q --> R[Future: Interpolation and Prediction]
-    R --> S[Future: Thematic Soil Maps]
+    K --> O[Future: NDVI and Soil Analysis]
+    O --> P[Future: Interpolation and Prediction]
 ```
 
 ## Recommended Architecture
@@ -66,7 +62,7 @@ FastAPI REST API
 - **Authentication:** HTTP-only cookie-based sessions with `user` and `admin` roles.
 - **Deployment:** Docker Compose.
 
-The `user` role has limited access: it can view dashboards, map layers, and recommendations, create a custom polygon, and export that polygon as KML/KMZ. The `admin` role has full access to uploads, map and area management, grid generation, recommendations, exports, and user accounts.
+The `user` role has limited access: it can view dashboards, map layers, and automatically generated recommendations, create a custom polygon, and export that polygon as KML/KMZ. The `admin` role has full access to uploads, map and layer management, exports, and user accounts.
 
 ## Repository Structure
 
