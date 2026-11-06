@@ -19,24 +19,21 @@ The project combines UAV imagery, GIS layers, soil measurements, and operational
 ```mermaid
 flowchart TD
     A[User Login] --> B{Role}
-    B -->|User| C[Dashboard]
-    B -->|Admin| D[Admin Panel]
+    B -->|User: Read-only| C[View Dashboard and Maps]
+    B -->|Admin: Full Access| D[Admin Panel]
 
-    C --> E[Upload Map Data]
-    C --> F[My Maps]
+    C --> E[View Map Layers]
+    C --> F[View Recommendations]
     C --> G[FAQ]
-    C --> H[Account Management]
 
-    E --> I[Map Layer and Version Management]
-    F --> J[Select Agricultural Area]
-    J --> K{Operational Area}
-    K -->|Custom Polygon| L[Create Custom Polygon]
-    K -->|Grid| M[Generate 100 x 100 m Grid]
-
-    L --> N[Recommendation by Intensity]
-    M --> N
-    L --> O[Export KML/KMZ]
-    M --> O
+    D --> H[Upload Map Data]
+    D --> I[Manage Map Layers and Versions]
+    D --> J[Manage Agricultural Areas]
+    D --> K[Create Custom Polygon]
+    D --> L[Generate 100 x 100 m Grid]
+    D --> M[Configure Recommendations]
+    D --> N[Export KML/KMZ]
+    D --> O[Manage User Accounts]
 
     I --> P[Future: NDVI and Soil Analysis]
     P --> Q[Future: Interpolation and Prediction]
@@ -67,6 +64,8 @@ FastAPI REST API
 - **File storage:** Local storage for development; S3-compatible storage can be added later.
 - **Authentication:** HTTP-only cookie-based sessions with `user` and `admin` roles.
 - **Deployment:** Docker Compose.
+
+The `user` role is read-only and can view dashboards, maps, layers, and recommendations. The `admin` role has full access to uploads, map and area management, grid generation, recommendations, exports, and user accounts.
 
 ## Repository Structure
 
