@@ -14,31 +14,34 @@ The project combines UAV imagery, GIS layers, soil measurements, and operational
 - Export grids and custom polygons as KML/KMZ files for drone mission planning.
 - Prepare the platform for future soil analysis and agricultural intelligence.
 
-## Development Scope
+## System Flowchart
 
-### Phase 1: Operational Dashboard
+```mermaid
+flowchart TD
+    A[User Login] --> B{Role}
+    B -->|User| C[Dashboard]
+    B -->|Admin| D[Admin Panel]
 
-- Login, logout, remember-me option, and one-hour session timeout.
-- User and administrator roles.
-- Dashboard with a concise operational overview.
-- Map upload and map version management.
-- Layered map display.
-- Agricultural area and polygon management.
-- 100 x 100 meter grid generation, approximately one hectare per block.
-- KML/KMZ export per block or custom polygon.
-- Basic recommendations based on low, medium, and high intensity.
-- Account management for administrators.
-- FAQ page.
+    C --> E[Upload Map Data]
+    C --> F[My Maps]
+    C --> G[FAQ]
+    C --> H[Account Management]
 
-### Phase 2: Agricultural Intelligence
+    E --> I[Map Layer and Version Management]
+    F --> J[Select Agricultural Area]
+    J --> K{Operational Area}
+    K -->|Custom Polygon| L[Create Custom Polygon]
+    K -->|Grid| M[Generate 100 x 100 m Grid]
 
-- NDVI and multispectral data processing.
-- Soil sensor data upload for nitrogen, phosphorus, potassium, pH, and EC.
-- Spatial interpolation and prediction.
-- Thematic soil distribution maps.
-- Validation of prediction accuracy.
+    L --> N[Recommendation by Intensity]
+    M --> N
+    L --> O[Export KML/KMZ]
+    M --> O
 
-The Phase 2 processing method will be selected after the available datasets and data quality have been evaluated.
+    I --> P[Future: NDVI and Soil Analysis]
+    P --> Q[Future: Interpolation and Prediction]
+    Q --> R[Future: Thematic Soil Maps]
+```
 
 ## Recommended Architecture
 
