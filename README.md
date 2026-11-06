@@ -23,21 +23,23 @@ flowchart TD
     B -->|Admin: Full Access| D[Admin Panel]
 
     C --> E[View Map Layers]
-    C --> F[View Recommendations]
-    C --> G[FAQ]
+    E --> F[View Recommendations]
+    C --> G[Custom Polygon]
+    G --> H[Export KML/KMZ]
+    C --> I[FAQ]
 
-    D --> H[Upload Map Data]
-    D --> I[Manage Map Layers and Versions]
-    D --> J[Manage Agricultural Areas]
-    D --> K[Create Custom Polygon]
-    D --> L[Generate 100 x 100 m Grid]
-    D --> M[Configure Recommendations]
-    D --> N[Export KML/KMZ]
-    D --> O[Manage User Accounts]
+    D --> J[Upload Map Data]
+    D --> K[Manage Map Layers and Versions]
+    D --> L[Manage Agricultural Areas]
+    D --> M[Create Custom Polygon]
+    M --> H
+    D --> N[Generate 100 x 100 m Grid]
+    D --> O[Configure Recommendations]
+    D --> P[Manage User Accounts]
 
-    I --> P[Future: NDVI and Soil Analysis]
-    P --> Q[Future: Interpolation and Prediction]
-    Q --> R[Future: Thematic Soil Maps]
+    K --> Q[Future: NDVI and Soil Analysis]
+    Q --> R[Future: Interpolation and Prediction]
+    R --> S[Future: Thematic Soil Maps]
 ```
 
 ## Recommended Architecture
@@ -65,7 +67,7 @@ FastAPI REST API
 - **Authentication:** HTTP-only cookie-based sessions with `user` and `admin` roles.
 - **Deployment:** Docker Compose.
 
-The `user` role is read-only and can view dashboards, maps, layers, and recommendations. The `admin` role has full access to uploads, map and area management, grid generation, recommendations, exports, and user accounts.
+The `user` role has limited access: it can view dashboards, map layers, and recommendations, create a custom polygon, and export that polygon as KML/KMZ. The `admin` role has full access to uploads, map and area management, grid generation, recommendations, exports, and user accounts.
 
 ## Repository Structure
 
