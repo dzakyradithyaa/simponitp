@@ -69,11 +69,13 @@ FastAPI REST API
 
 ```text
 simponitp/
-├─ frontend/       # Next.js dashboard and map interface
-├─ backend/        # FastAPI API and business logic
-├─ database/       # PostgreSQL/PostGIS migrations
-├─ storage/        # Uploaded and generated geospatial files
-├─ docs/           # Technical and project documentation
+├─ apps/
+│  ├─ web/          # Next.js dashboard and map interface
+│  └─ api/          # FastAPI API and business logic
+├─ packages/        # Shared contracts or utilities, only when needed
+├─ database/        # PostgreSQL/PostGIS migrations
+├─ storage/         # Uploaded and generated geospatial files
+├─ docs/            # Technical and project documentation
 ├─ docker-compose.yml
 └─ README.md
 ```
