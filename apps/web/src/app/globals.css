@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+html, body { height: 100%; }
+body {
+  @apply bg-field font-sans text-army-950 antialiased;
+  font-size: 15px;
+  line-height: 1.5;
+}
+h1, h2, h3 { @apply font-display font-semibold tracking-wide text-army-900; }
+h1 { @apply text-3xl; }
+h2 { @apply text-xl; }
+
+:focus-visible { outline: 2px solid theme("colors.gold.500"); outline-offset: 2px; }
+
+@layer components {
+  .card { @apply rounded-md border border-army-200 bg-[#f7f8f2]; }
+  .field-label { @apply mb-1 block text-sm font-medium text-army-800; }
+  .input {
+    @apply w-full rounded border border-army-300 bg-white px-3 py-2 text-army-950 placeholder:text-army-400;
+    @apply focus:border-army-600 focus:outline-none focus:ring-2 focus:ring-gold-400/60;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded px-3.5 py-2 text-sm font-semibold transition-colors;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply btn bg-army-700 text-white hover:bg-army-800; }
+  .btn-gold { @apply btn bg-gold-500 text-army-950 hover:bg-gold-400; }
+  .btn-ghost { @apply btn border border-army-300 bg-white text-army-800 hover:bg-army-50; }
+  .btn-danger { @apply btn border border-alert/40 bg-white text-alert hover:bg-red-50; }
+  .th { @apply px-3 py-2 text-left text-sm font-semibold text-army-700; }
+  .td { @apply px-3 py-2 align-middle; }
+}
+
+/* Rank-chevron stripes: the one decorative motif, used on the login panel and the sidebar edge. */
+.chevron-field {
+  background-color: theme("colors.army.900");
+  background-image:
+    repeating-linear-gradient(135deg, transparent 0 46px, rgba(201, 162, 39, 0.10) 46px 50px),
+    repeating-linear-gradient(45deg, transparent 0 46px, rgba(201, 162, 39, 0.10) 46px 50px);
+}
+
+.maplibregl-ctrl-attrib { font-size: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

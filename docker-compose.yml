@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-simponi}
+      POSTGRES_USER: ${POSTGRES_USER:-simponi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Isi POSTGRES_PASSWORD di file .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simponi} -d ${POSTGRES_DB:-simponi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-simponi}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-simponi}
+      STORAGE_DIR: /app/storage
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Isi ADMIN_PASSWORD di file .env}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-Administrator}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
+      REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-7}
+      GRID_CELL_SIZE_M: ${GRID_CELL_SIZE_M:-100}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-1024}
+      ENABLE_DOCS: ${ENABLE_DOCS:-true}
+    volumes:
+      - storage:/app/storage
+    expose:
+      - "8000" # reachable only from the web service; the browser goes through /api on port 3000
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        API_INTERNAL_URL: http://api:8000
+        NEXT_PUBLIC_TILES_STREETS: ${NEXT_PUBLIC_TILES_STREETS:-}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  storage:
