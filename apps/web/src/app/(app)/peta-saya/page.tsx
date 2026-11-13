@@ -1,37 +1,208 @@
 "use client";
 
-import { Download, Layers, MousePointerClick, PencilRuler, Trash2, Undo2 } from "lucide-react";
+import {
+  ArrowUUpLeft,
+  CalendarBlank,
+  Check,
+  CursorClick,
+  GridFour,
+  MagnifyingGlass,
+  MapTrifold,
+  NavigationArrow,
+  DownloadSimple,
+  IconContext,
+  PencilRuler,
+  SidebarSimple,
+  Stack,
+  Trash,
+  X,
+} from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IntensityBadge, LEVEL_COLOR, LEVEL_LABEL, Notice, Spinner } from "@/components/ui";
+import {
+  IntensityBadge,
+  LEVEL_COLOR,
+  LEVEL_LABEL,
+  Notice,
+  Spinner,
+} from "@/components/ui";
 import type { LayerToggles } from "@/components/MapCanvas";
+import { SurveyThumb } from "@/components/SurveyThumb";
 import { api, fmtHa, fmtNdvi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { boundsOf, polygonAreaHa } from "@/lib/geo";
-import type { Analysis, Bounds, GridCollection, Intensity, MapItem, PolygonItem, Position, Rule } from "@/lib/types";
+import type {
+  Analysis,
+  Bounds,
+  GridCollection,
+  Intensity,
+  MapItem,
+  PolygonItem,
+  Position,
+  Rule,
+} from "@/lib/types";
 
-const MapCanvas = dynamic(() => import("@/components/MapCanvas"), { ssr: false, loading: () => <div className="absolute inset-0 grid place-items-center"><Spinner label="Memuat peta..." /></div> });
+/*
+ * Gaya Figma terang: satu bar atas (di Shell), panel properti menempel di kiri,
+ * toolbar melayang di bawah, dan pill langkah di atas peta. Merah #D71920 hanya
+ * untuk aksi utama dan langkah aktif. Ikon: Phosphor (light) lewat IconContext.
+ */
+
+const MapCanvas = dynamic(() => import("@/components/MapCanvas"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 grid place-items-center bg-[#f5f5f5]">
+      <Spinner label="Memuat peta..." />
+    </div>
+  ),
+});
+
 const LEVELS: Intensity[] = ["rendah", "sedang", "tinggi"];
 
-function ExportBar({ hrefFor, optionLabel, disabled }: { hrefFor: (fmt: "kml" | "kmz", opt: boolean) => string; optionLabel: string; disabled?: boolean }) {
+type Mode = "petak" | "custom";
+type StepState = "done" | "active" | "todo";
+
+const MODES: ReadonlyArray<readonly [Mode, string]> = [
+  ["petak", "Lihat petak"],
+  ["custom", "Custom petak"],
+];
+
+const STEP_TITLES: Record<Mode, string[]> = {
+  petak: ["Pilih peta", "Analisis intensitas", "Pilih petak", "Ekspor"],
+  custom: ["Pilih peta", "Gambar polygon", "Pilih polygon", "Ekspor"],
+};
+
+const LAYER_ITEMS = [
+  ["boundary", "Batas lahan", "Garis batas area"],
+  ["grid", "Petak 1 ha", "Grid analisis"],
+  ["ndvi", "Raster TIFF / NDVI", "Citra hasil pemrosesan"],
+  ["polygons", "Polygon custom", "Area digitasi"],
+] as const;
+
+const FOCUS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D71920] focus-visible:ring-offset-2";
+
+const BTN =
+  "inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40";
+
+const BTN_RED = `${BTN} bg-[#D71920] text-white hover:bg-[#B8141A] ${FOCUS}`;
+
+const BTN_OUTLINE = `${BTN} border border-[#cfcfcf] bg-white text-[#202020] hover:bg-[#f4f4f4] ${FOCUS}`;
+
+const LINK_BTN = `rounded text-[11px] font-semibold text-[#A3121A] hover:underline disabled:opacity-40 ${FOCUS}`;
+
+const FIELD = `h-9 w-full rounded-md border border-[#cfcfcf] bg-white px-2.5 text-xs font-medium text-[#202020] outline-none transition disabled:opacity-50 ${FOCUS}`;
+
+const LABEL = "mb-1 block text-[11px] font-semibold text-[#5a5a5a]";
+
+const TILE = "rounded-md border border-[#e6e6e6] bg-[#f6f6f6] p-2.5";
+
+const isMobile = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(max-width: 767px)").matches;
+
+function ExportBar({
+  hrefFor,
+  optionLabel,
+  disabled,
+}: {
+  hrefFor: (fmt: "kml" | "kmz", opt: boolean) => string;
+  optionLabel: string;
+  disabled?: boolean;
+}) {
   const [opt, setOpt] = useState(false);
-  const cls = (off?: boolean) => `btn-gold flex-1 ${off ? "pointer-events-none opacity-50" : ""}`;
+
   return (
     <div>
       <div className="flex gap-2">
-        <a className={cls(disabled)} href={hrefFor("kml", opt)} aria-disabled={disabled}><Download className="h-4 w-4" aria-hidden /> KML</a>
-        <a className={cls(disabled)} href={hrefFor("kmz", opt)} aria-disabled={disabled}><Download className="h-4 w-4" aria-hidden /> KMZ</a>
+        {(["kml", "kmz"] as const).map((fmt) => (
+          <a
+            key={fmt}
+            className={`flex-1 uppercase ${BTN_RED} ${
+              disabled ? "pointer-events-none opacity-40" : ""
+            }`}
+            href={hrefFor(fmt, opt)}
+            aria-disabled={disabled}
+            tabIndex={disabled ? -1 : undefined}
+          >
+            <DownloadSimple className="h-3.5 w-3.5" aria-hidden="true" />
+            {fmt}
+          </a>
+        ))}
       </div>
-      <label className="mt-2 flex items-center gap-2 text-sm text-army-800">
-        <input type="checkbox" className="h-4 w-4 accent-army-700" checked={opt} onChange={(e) => setOpt(e.target.checked)} /> {optionLabel}
+
+      <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-[#3a3a3a]">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-[#D71920]"
+          checked={opt}
+          onChange={(e) => setOpt(e.target.checked)}
+        />
+        {optionLabel}
       </label>
     </div>
   );
 }
 
+function StepCard({
+  n,
+  title,
+  state,
+  badge,
+  children,
+}: {
+  n: number;
+  title: string;
+  state: StepState;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="border-b border-[#ececec] bg-white"
+      aria-current={state === "active" ? "step" : undefined}
+    >
+      <header
+        className={`flex items-center gap-2 border-l-2 px-3 py-2.5 ${
+          state === "active" ? "border-l-[#D71920]" : "border-l-transparent"
+        }`}
+      >
+        <span
+          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${
+            state === "done"
+              ? "bg-[#202020] text-white"
+              : state === "active"
+              ? "bg-[#D71920] text-white"
+              : "border border-[#cfcfcf] bg-white text-[#6b6b6b]"
+          }`}
+        >
+          {state === "done" ? (
+            <Check className="h-3 w-3" aria-label="Selesai" />
+          ) : (
+            n
+          )}
+        </span>
+
+        <h3
+          className={`min-w-0 flex-1 truncate text-xs font-semibold ${
+            state === "todo" ? "text-[#6b6b6b]" : "text-[#202020]"
+          }`}
+        >
+          {title}
+        </h3>
+
+        {badge}
+      </header>
+
+      <div className="px-3 pb-3 pl-[calc(0.75rem+2px)] pt-0.5">{children}</div>
+    </section>
+  );
+}
+
 export default function PetaSayaPage() {
   const { user } = useAuth();
+
   const [maps, setMaps] = useState<MapItem[] | null>(null);
   const [mapId, setMapId] = useState<number | null>(null);
   const [detail, setDetail] = useState<MapItem | null>(null);
@@ -39,293 +210,1664 @@ export default function PetaSayaPage() {
   const [grid, setGrid] = useState<GridCollection | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [polygons, setPolygons] = useState<PolygonItem[]>([]);
-  const [mode, setMode] = useState<"petak" | "custom">("petak");
-  const [layers, setLayers] = useState<LayerToggles>({ boundary: true, grid: true, ndvi: true, polygons: true });
+
+  const [mode, setMode] = useState<Mode>("petak");
+
+  const [layers, setLayers] = useState<LayerToggles>({
+    boundary: true,
+    grid: true,
+    ndvi: true,
+    polygons: true,
+  });
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [intensity, setIntensity] = useState<Intensity | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+
   const [draft, setDraft] = useState<Position[]>([]);
   const [drawing, setDrawing] = useState(false);
   const [pending, setPending] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [polyName, setPolyName] = useState("");
   const [selPoly, setSelPoly] = useState<number | null>(null);
-  const [fit, setFit] = useState<{ key: number; bounds: Bounds | null }>({ key: 0, bounds: null });
+  const [confirmDel, setConfirmDel] = useState<number | null>(null);
+
+  const [fit, setFit] = useState<{
+    key: number;
+    bounds: Bounds | null;
+  }>({
+    key: 0,
+    bounds: null,
+  });
+
   const [error, setError] = useState<string | null>(null);
   const [gridMsg, setGridMsg] = useState<string | null>(null);
   const [disclaimer, setDisclaimer] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // initial data
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [surveyOpen, setSurveyOpen] = useState(false);
+  const [surveyQ, setSurveyQ] = useState("");
+  const [polyQ, setPolyQ] = useState("");
+  const [mapQ, setMapQ] = useState("");
+
+  // Di layar kecil panel dimulai tertutup agar peta langsung terlihat.
   useEffect(() => {
-    Promise.all([api.get<MapItem[]>("/maps"), api.get<{ rules: Rule[]; disclaimer: string }>("/recommendations/rules")])
-      .then(([m, r]) => {
-        setMaps(m); setRules(r.rules); setDisclaimer(r.disclaimer);
-        const wanted = Number(new URLSearchParams(window.location.search).get("map"));
-        setMapId((m.find((x) => x.id === wanted) ?? m.find((x) => x.has_boundary) ?? m[0])?.id ?? null);
-      })
-      .catch((e) => setError(e.message));
+    if (isMobile()) setPanelOpen(false);
   }, []);
 
-  // map changed: load detail + polygons
+  // Initial data
   useEffect(() => {
-    setSelected(new Set()); setIntensity(null); setAnalysis(null); setSelPoly(null); setDraft([]); setDrawing(false); setPending(false);
-    if (mapId == null) { // base map only: nothing uploaded, or the user chose to hide uploaded maps
-      setDetail(null); setPolygons([]); setVersionId(null); setGrid(null); setGridMsg(null);
-      return;
-    }
-    Promise.all([api.get<MapItem>(`/maps/${mapId}`), api.get<PolygonItem[]>(`/maps/${mapId}/polygons`)])
-      .then(([d, p]) => {
-        setDetail(d); setPolygons(p);
-        const ready = d.versions.filter((v) => v.status === "ready");
-        setVersionId((ready.find((v) => v.is_active) ?? ready[ready.length - 1])?.id ?? null);
-        setFit((f) => ({ key: f.key + 1, bounds: d.bounds }));
+    let alive = true;
+
+    Promise.all([
+      api.get<MapItem[]>("/maps"),
+      api.get<{ rules: Rule[]; disclaimer: string }>("/recommendations/rules"),
+    ])
+      .then(([m, r]) => {
+        if (!alive) return;
+
+        setMaps(m);
+        setRules(r.rules);
+        setDisclaimer(r.disclaimer);
+
+        const wanted = Number(
+          new URLSearchParams(window.location.search).get("map")
+        );
+
+        setMapId(
+          (
+            m.find((x) => x.id === wanted) ??
+            m.find((x) => x.has_boundary) ??
+            m[0]
+          )?.id ?? null
+        );
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (alive) setError(e.message);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [reloadKey]);
+
+  // Map changed: reset everything tied to the old map, then load the new one
+  useEffect(() => {
+    setSelected(new Set());
+    setIntensity(null);
+    setAnalysis(null);
+    setSelPoly(null);
+    setConfirmDel(null);
+    setDraft([]);
+    setDrawing(false);
+    setPending(false);
+    setDetail(null);
+    setPolygons([]);
+    setVersionId(null);
+    setGrid(null);
+    setGridMsg(null);
+
+    if (mapId == null) return;
+
+    let alive = true;
+
+    Promise.all([
+      api.get<MapItem>(`/maps/${mapId}`),
+      api.get<PolygonItem[]>(`/maps/${mapId}/polygons`),
+    ])
+      .then(([d, p]) => {
+        if (!alive) return;
+
+        setDetail(d);
+        setPolygons(p);
+
+        const ready = d.versions.filter((v) => v.status === "ready");
+
+        setVersionId(
+          (ready.find((v) => v.is_active) ?? ready[ready.length - 1])?.id ??
+            null
+        );
+
+        setFit((f) => ({
+          key: f.key + 1,
+          bounds: d.bounds,
+        }));
+      })
+      .catch((e) => {
+        if (alive) setError(e.message);
+      });
+
+    return () => {
+      alive = false;
+    };
   }, [mapId]);
 
-  // grid for map + version
+  // Grid for map and version
   useEffect(() => {
     if (mapId == null || !detail || detail.id !== mapId) return;
-    if (!detail.has_boundary) { setGrid(null); setGridMsg("Peta ini belum memiliki TIFF. Unggah TIFF di Upload Peta."); return; }
-    api.get<GridCollection>(`/maps/${mapId}/grid${versionId ? `?version_id=${versionId}` : ""}`)
-      .then((g) => { setGrid(g); setGridMsg(null); })
-      .catch((e) => { setGrid(null); setGridMsg(e.message); });
+
+    if (!detail.has_boundary) {
+      setGrid(null);
+      setGridMsg("Peta ini belum memiliki TIFF. Unggah TIFF di Upload Peta.");
+      return;
+    }
+
+    let alive = true;
+
+    api
+      .get<GridCollection>(
+        `/maps/${mapId}/grid${versionId ? `?version_id=${versionId}` : ""}`
+      )
+      .then((g) => {
+        if (!alive) return;
+        setGrid(g);
+        setGridMsg(null);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setGrid(null);
+        setGridMsg(e.message);
+      });
+
+    return () => {
+      alive = false;
+    };
   }, [mapId, versionId, detail]);
 
-  // recommendation analysis for the chosen intensity
+  // Recommendation analysis
   useEffect(() => {
-    if (!intensity || mapId == null || !grid) return setAnalysis(null);
-    api.get<Analysis>(`/recommendations/analysis?map_id=${mapId}&intensity=${intensity}${versionId ? `&version_id=${versionId}` : ""}`)
-      .then(setAnalysis).catch((e) => setError(e.message));
+    setAnalysis(null);
+
+    if (!intensity || mapId == null || !grid) return;
+
+    let alive = true;
+
+    api
+      .get<Analysis>(
+        `/recommendations/analysis?map_id=${mapId}&intensity=${intensity}${
+          versionId ? `&version_id=${versionId}` : ""
+        }`
+      )
+      .then((a) => {
+        if (alive) setAnalysis(a);
+      })
+      .catch((e) => {
+        if (alive) setError(e.message);
+      });
+
+    return () => {
+      alive = false;
+    };
   }, [intensity, mapId, versionId, grid]);
 
   const version = detail?.versions.find((v) => v.id === versionId) ?? null;
-  const tilesUrl = version && version.status === "ready" && version.has_tiles && typeof window !== "undefined"
-    ? `${window.location.origin}/api/maps/${mapId}/versions/${version.id}/tiles.pmtiles` : null;
-  const ruleOf = (k: Intensity | null) => rules.find((r) => r.intensity === k);
-  const selectedCells = useMemo(() => (grid?.features ?? []).filter((f) => selected.has(f.properties.cell_id)).map((f) => f.properties), [grid, selected]);
 
-  const toggleCell = useCallback((id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }), []);
+  const tilesUrl =
+    version &&
+    version.status === "ready" &&
+    version.has_tiles &&
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/maps/${mapId}/versions/${version.id}/tiles.pmtiles`
+      : null;
+
+  const ruleOf = (k: Intensity | null) => rules.find((r) => r.intensity === k);
+
+  // Hanya petak yang benar-benar ada di grid aktif yang dihitung terpilih.
+  const selectedCells = useMemo(
+    () =>
+      (grid?.features ?? [])
+        .filter((f) => selected.has(f.properties.cell_id))
+        .map((f) => f.properties),
+    [grid, selected]
+  );
+
+  const selectedIds = useMemo(
+    () => selectedCells.map((c) => c.cell_id),
+    [selectedCells]
+  );
+
+  const toggleCell = useCallback((id: string) => {
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }, []);
+
   const addPoint = useCallback((p: Position) => setDraft((d) => [...d, p]), []);
+
   const pickPolygon = useCallback((id: number) => setSelPoly(id), []);
 
+  const cancelDraw = useCallback(() => {
+    setDraft([]);
+    setDrawing(false);
+    setPending(false);
+  }, []);
+
+  const undoPoint = useCallback(() => setDraft((d) => d.slice(0, -1)), []);
+
+  const finishDraw = useCallback(() => {
+    if (draft.length < 3) return;
+    setDrawing(false);
+    setPending(true);
+    setPanelOpen(true);
+  }, [draft.length]);
+
+  // Pintasan keyboard saat menggambar: Esc batal, Enter selesai, Backspace undo.
+  useEffect(() => {
+    if (!drawing) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        cancelDraw();
+        return;
+      }
+
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "SELECT" ||
+        tag === "TEXTAREA" ||
+        tag === "BUTTON"
+      )
+        return;
+
+      if (e.key === "Enter") {
+        finishDraw();
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        undoPoint();
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawing, cancelDraw, finishDraw, undoPoint]);
+
+  const switchMode = (m: Mode) => {
+    if (m === mode) return;
+
+    setMode(m);
+    cancelDraw();
+    setConfirmDel(null);
+
+    // Pastikan layer yang dibutuhkan mode ini tidak sedang dimatikan.
+    setLayers((l) =>
+      m === "petak" ? { ...l, grid: true } : { ...l, polygons: true }
+    );
+  };
+
+  const startDraw = () => {
+    setDrawing(true);
+    setSelPoly(null);
+    if (isMobile()) setPanelOpen(false);
+  };
+
   const cellsHref = (fmt: "kml" | "kmz", separate: boolean) => {
-    const q = new URLSearchParams({ map_id: String(mapId), format: fmt });
+    const q = new URLSearchParams({
+      map_id: String(mapId),
+      format: fmt,
+    });
+
     if (versionId) q.set("version_id", String(versionId));
-    if (selected.size) q.set("cell_ids", [...selected].join(","));
+    if (selectedIds.length) q.set("cell_ids", selectedIds.join(","));
     if (separate) q.set("separate", "true");
+
     return `/api/exports/cells?${q}`;
   };
 
   async function savePolygon() {
-    setError(null);
-    try {
-      const created = await api.post<PolygonItem>(`/maps/${mapId}/polygons`, { name: polyName.trim(), geometry: { type: "Polygon", coordinates: [[...draft, draft[0]]] } });
-      setPolygons((p) => [created, ...p]); setSelPoly(created.id);
-      setDraft([]); setPending(false); setPolyName("");
-    } catch (e) { setError((e as Error).message); }
-  }
-  async function removePolygon(p: PolygonItem) {
-    if (!confirm(`Hapus polygon "${p.name}"?`)) return;
-    await api.del(`/polygons/${p.id}`).catch((e) => setError(e.message));
-    setPolygons((l) => l.filter((x) => x.id !== p.id));
-    if (selPoly === p.id) setSelPoly(null);
-  }
-  const cancelDraw = () => { setDraft([]); setDrawing(false); setPending(false); };
+    if (saving || mapId == null || draft.length < 3 || !polyName.trim()) return;
 
-  if (error && !maps) return <Notice kind="error">{error}</Notice>;
+    setSaving(true);
+    setError(null);
+
+    try {
+      const created = await api.post<PolygonItem>(`/maps/${mapId}/polygons`, {
+        name: polyName.trim(),
+        geometry: {
+          type: "Polygon",
+          coordinates: [[...draft, draft[0]]],
+        },
+      });
+
+      setPolygons((p) => [created, ...p]);
+      setSelPoly(created.id);
+      setDraft([]);
+      setPending(false);
+      setPolyName("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removePolygon(p: PolygonItem) {
+    setError(null);
+
+    try {
+      await api.del(`/polygons/${p.id}`);
+
+      setPolygons((l) => l.filter((x) => x.id !== p.id));
+      if (selPoly === p.id) setSelPoly(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setConfirmDel(null);
+    }
+  }
+
+  if (error && !maps) {
+    return (
+      <div className="mx-auto max-w-md space-y-3 p-6">
+        <Notice kind="error">{error}</Notice>
+        <button
+          type="button"
+          className={BTN_RED}
+          onClick={() => {
+            setError(null);
+            setReloadKey((k) => k + 1);
+          }}
+        >
+          Coba lagi
+        </button>
+      </div>
+    );
+  }
+
   if (!maps) return <Spinner />;
 
   const draftHa = polygonAreaHa(draft);
   const summary = grid?.summary;
+  const selectedPolygon = polygons.find((p) => p.id === selPoly) ?? null;
+
+  // Data siap dipakai langkah 2-4 pada mode aktif.
+  const ready = mapId != null && (mode === "petak" ? !!grid : true);
+
+  const lockedText =
+    mapId == null
+      ? "Pilih peta pada langkah 1 terlebih dahulu."
+      : gridMsg
+      ? "Data petak belum tersedia untuk peta ini."
+      : "Memuat data petak...";
+
+  // Langkah yang sedang aktif dan petunjuk berikutnya.
+  let activeStep: number;
+  let hint: string;
+
+  if (mapId == null) {
+    activeStep = 1;
+    hint = maps.length
+      ? "Buka panel Alur kerja, lalu pilih peta yang ingin dikerjakan."
+      : "Belum ada peta. Unggah data TIFF terlebih dahulu.";
+  } else if (mode === "petak") {
+    if (gridMsg) {
+      activeStep = 1;
+      hint =
+        "Peta ini belum bisa dianalisis. Lihat keterangannya di panel Alur kerja.";
+    } else if (!grid) {
+      activeStep = 1;
+      hint = "Memuat data petak...";
+    } else if (selectedIds.length > 0) {
+      activeStep = 4;
+      hint = `${selectedIds.length} petak dipilih. Unduh sebagai KML atau KMZ di langkah Ekspor.`;
+    } else if (intensity) {
+      activeStep = 3;
+      hint = `Klik petak pada peta untuk memilihnya, atau pilih semua petak intensitas ${LEVEL_LABEL[
+        intensity
+      ].toLowerCase()}. Tanpa pilihan, ekspor mencakup semua petak.`;
+    } else {
+      activeStep = 2;
+      hint =
+        "Pilih tingkat intensitas untuk melihat saran tindakan, atau langsung klik petak pada peta. Langkah analisis boleh dilewati.";
+    }
+  } else if (pending) {
+    activeStep = 2;
+    hint = "Beri nama polygon, lalu simpan.";
+  } else if (drawing) {
+    activeStep = 2;
+    hint =
+      "Klik pada peta untuk menandai titik sudut. Minimal 3 titik, lalu tekan Selesai.";
+  } else if (selPoly != null) {
+    activeStep = 4;
+    hint = "Polygon dipilih. Unduh sebagai KML atau KMZ di langkah Ekspor.";
+  } else if (polygons.length) {
+    activeStep = 3;
+    hint =
+      "Pilih polygon dari daftar untuk diekspor, atau gambar polygon baru.";
+  } else {
+    activeStep = 2;
+    hint =
+      "Tekan Gambar polygon baru, lalu klik pada peta untuk menandai area kerja.";
+  }
+
+  const stepState = (n: number): StepState =>
+    n < activeStep ? "done" : n === activeStep ? "active" : "todo";
+
+  const titles = STEP_TITLES[mode];
+
+  const locked = (
+    <p className="text-xs leading-5 text-[#5a5a5a]">{lockedText}</p>
+  );
+
+  // Lompat ke peta NDVI: pakai batas versi yang sedang dipilih.
+  const ndviBounds = version?.bounds ?? detail?.bounds ?? null;
+  const goNdvi = () => {
+    if (!ndviBounds) return;
+    setFit((f) => ({ key: f.key + 1, bounds: ndviBounds }));
+  };
+
+  const mq = mapQ.trim().toLowerCase();
+  const mapsShown = mq
+    ? maps.filter((m) =>
+        `${m.name} ${m.description ?? ""}`.toLowerCase().includes(mq)
+      )
+    : maps;
+
+  const pq = polyQ.trim().toLowerCase();
+  const polygonsShown = pq
+    ? polygons.filter((p) =>
+        `${p.name} ${p.owner ?? ""} ${p.note ?? ""}`.toLowerCase().includes(pq)
+      )
+    : polygons;
+
+  const monthOf = (iso: string) =>
+    new Date(iso).toLocaleDateString("id-ID", {
+      month: "long",
+      year: "numeric",
+    });
+  const thisMonth = monthOf(new Date().toISOString());
+  const surveyList = [...(detail?.versions ?? [])].sort(
+    (a, b) => +new Date(b.created_at) - +new Date(a.created_at)
+  );
+  const q = surveyQ.trim().toLowerCase();
+  const surveyShown = q
+    ? surveyList.filter((v) =>
+        [
+          v.label,
+          v.notes ?? "",
+          v.original_filename,
+          `v${v.version}`,
+          monthOf(v.created_at),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      )
+    : surveyList;
+  const surveyGroups: [string, typeof surveyList][] = [];
+  for (const v of surveyShown) {
+    const m = monthOf(v.created_at);
+    const g = surveyGroups.find((x) => x[0] === m);
+    if (g) g[1].push(v);
+    else surveyGroups.push([m, [v]]);
+  }
+
+  const shift = panelOpen ? "md:left-[calc(50%+150px)]" : "";
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] min-h-[560px] flex-col lg:h-[calc(100vh-3rem)]">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h1 className="mr-2">Peta Saya</h1>
-        <label className="sr-only" htmlFor="sel-map">Peta</label>
-        <select id="sel-map" className="input w-auto" value={mapId ?? ""} onChange={(e) => setMapId(e.target.value ? Number(e.target.value) : null)}>
-          <option value="">Hanya peta dasar (OpenStreetMap)</option>
-          {maps.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-        {mapId != null && <label className="sr-only" htmlFor="sel-ver">Versi peta</label>}
-        {mapId != null && <select id="sel-ver" className="input w-auto" value={versionId ?? ""} onChange={(e) => setVersionId(e.target.value ? Number(e.target.value) : null)} disabled={!detail?.versions.length}>
-          {!detail?.versions.length && <option value="">Belum ada versi NDVI</option>}
-          {detail?.versions.map((v) => (
-            <option key={v.id} value={v.id} disabled={v.status !== "ready"}>
-              v{v.version} · {v.label}{v.is_active ? " (aktif)" : ""}{v.status !== "ready" ? ` [${v.status === "processing" ? "diproses" : "gagal"}]` : ""}
-            </option>
-          ))}
-        </select>}
-        {summary && <span className="text-sm text-army-700">{summary.cells} petak · {fmtHa(summary.area_ha)} ha</span>}
-      </div>
-
-      {error && <div className="mb-3"><Notice kind="error">{error}</Notice></div>}
-
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1fr_360px]">
-        {/* ---------- map ---------- */}
-        <div className="card relative min-h-[420px] overflow-hidden">
+    <IconContext.Provider value={{ weight: "light" }}>
+      <div className="relative h-[calc(100dvh-3.5rem)] min-h-[480px] w-full overflow-hidden bg-[#f5f5f5] text-[#202020]">
+        <div className="absolute inset-0">
           <MapCanvas
-            layers={layers} boundary={detail?.boundary ?? null} grid={grid} selected={selected}
-            highlight={mode === "petak" ? intensity : null} tilesUrl={tilesUrl}
-            polygons={polygons} selectedPolygonId={selPoly} mode={mode} drawing={drawing} draft={draft} fit={fit}
-            onCellClick={toggleCell} onPolygonClick={pickPolygon} onDrawPoint={addPoint}
+            layers={layers}
+            boundary={detail?.boundary ?? null}
+            grid={grid}
+            selected={selected}
+            highlight={mode === "petak" ? intensity : null}
+            tilesUrl={tilesUrl}
+            polygons={polygons}
+            selectedPolygonId={selPoly}
+            mode={mode}
+            drawing={drawing}
+            draft={draft}
+            fit={fit}
+            onCellClick={toggleCell}
+            onPolygonClick={pickPolygon}
+            onDrawPoint={addPoint}
           />
-
-          <div className="absolute left-3 top-3 z-10 flex overflow-hidden rounded border border-army-700 bg-army-900 shadow" role="group" aria-label="Mode peta">
-            {([["petak", "Lihat petak"], ["custom", "Custom petak"]] as const).map(([m, label]) => (
-              <button key={m} onClick={() => { setMode(m); if (m === "petak") cancelDraw(); }} aria-pressed={mode === m}
-                      className={`whitespace-nowrap px-3 py-2 text-sm font-semibold sm:px-4 ${mode === m ? "bg-gold-500 text-army-950" : "text-khaki-100 hover:bg-army-800"}`}>{label}</button>
-            ))}
-          </div>
-
-          <details className="absolute right-3 top-3 z-10 text-sm">
-            <summary className="flex cursor-pointer list-none items-center gap-2 rounded border border-army-300 bg-white/95 px-3 py-2 font-semibold text-army-900 shadow" aria-label="Layer"><Layers className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Layer</span></summary>
-            <div className="absolute right-0 mt-1 w-44 space-y-1 rounded border border-army-300 bg-white/95 px-3 py-2 shadow">
-              {([["boundary", "Batas lahan"], ["grid", "Petak 1 ha"], ["ndvi", "Peta TIFF"], ["polygons", "Polygon custom"]] as const).map(([k, label]) => (
-                <label key={k} className="flex items-center gap-2"><input type="checkbox" className="accent-army-700" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} /> {label}</label>
-              ))}
-            </div>
-          </details>
-
-          {gridMsg && <div className="absolute inset-x-3 bottom-12 z-10"><Notice>{gridMsg}</Notice></div>}
-          {mode === "custom" && drawing && (
-            <div className="absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded bg-army-900/95 px-3 py-2 text-sm text-khaki-100 shadow">
-              <span>{draft.length} titik{draft.length >= 3 && ` · ± ${fmtHa(draftHa)} ha`}</span>
-              <button className="btn border border-army-600 px-2 py-1 text-khaki-100 hover:bg-army-800" disabled={!draft.length} onClick={() => setDraft((d) => d.slice(0, -1))}><Undo2 className="h-4 w-4" aria-label="Hapus titik terakhir" /></button>
-              <button className="btn-gold px-2.5 py-1" disabled={draft.length < 3} onClick={() => { setDrawing(false); setPending(true); }}>Selesai</button>
-              <button className="btn border border-army-600 px-2 py-1 text-khaki-100 hover:bg-army-800" onClick={cancelDraw}>Batal</button>
-            </div>
-          )}
         </div>
 
-        {/* ---------- side panel ---------- */}
-        <aside className="min-h-0 space-y-3 overflow-y-auto pb-2" aria-label="Panel petak">
-          {mapId == null ? (
-            <section className="card p-4" aria-labelledby="nomap">
-              <h2 id="nomap" className="mb-1">{maps.length ? "Hanya peta dasar" : "Belum ada peta TIFF"}</h2>
-              <p className="text-sm text-army-800">
-                Ini peta dasar OpenStreetMap. Geser dan zoom untuk menjelajah.{" "}
-                {maps.length
-                  ? "Pilih peta di atas untuk menampilkan TIFF, petak 1 ha, dan rekomendasi."
-                  : "Setelah admin mengunggah TIFF, peta hasil unggahan muncul di atas peta dasar sesuai koordinatnya, lengkap dengan petak dan rekomendasi."}
-                {mode === "custom" && " Polygon custom disimpan pada sebuah peta, jadi pilih atau unggah peta dulu."}
-              </p>
-              {user?.role === "admin" && <Link href="/upload-peta" className="btn-gold mt-3">Upload peta (TIFF)</Link>}
-            </section>
-          ) : mode === "petak" ? (
-            <>
-              <section className="card p-4" aria-labelledby="rek">
-                <h2 id="rek" className="mb-1">Analisis rekomendasi</h2>
-                <p className="mb-3 text-sm text-army-700">Pilih intensitas untuk melihat tindakan yang disarankan.</p>
-                <div className="grid grid-cols-3 gap-2" role="group" aria-label="Pilih intensitas">
-                  {LEVELS.map((k) => {
-                    const b = summary?.by_intensity[k];
-                    const on = intensity === k;
-                    return (
-                      <button key={k} onClick={() => setIntensity(on ? null : k)} aria-pressed={on}
-                              className={`rounded border-2 px-2 py-2 text-left ${on ? "bg-white" : "bg-army-50 hover:bg-white"}`} style={{ borderColor: on ? LEVEL_COLOR[k] : "transparent" }}>
-                        <span className="flex items-center gap-1.5 text-sm font-semibold"><span className="h-3 w-3 rounded-sm" style={{ background: LEVEL_COLOR[k] }} />{LEVEL_LABEL[k]}</span>
-                        <span className="text-xs text-army-700">{b ? `${b.cells} petak` : "-"}</span>
+        {/* Langkah aktif: pill kecil melayang, bukan bar penuh */}
+        <div
+          className={`absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-72px)] -translate-x-1/2 items-center gap-2.5 rounded-full border border-[#e6e6e6] bg-white py-1.5 pl-1.5 pr-4 shadow-[0_4px_16px_rgba(32,32,32,0.12)] sm:max-w-[560px] ${shift}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#D71920] text-xs font-bold text-white">
+            {activeStep}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-[#202020]">
+              {titles[activeStep - 1]}
+              <span className="ml-2 font-normal text-[#6b6b6b]">
+                {activeStep}/4
+              </span>
+            </p>
+            <p className="line-clamp-2 text-[11px] leading-4 text-[#6b6b6b]">
+              {hint}
+            </p>
+          </div>
+        </div>
+
+        {/* Error notice */}
+        {error && (
+          <div
+            className="absolute left-1/2 top-20 z-40 flex w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2"
+            role="alert"
+          >
+            <div className="min-w-0 flex-1">
+              <Notice kind="error">{error}</Notice>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="Tutup pesan"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white text-[#202020] shadow-md ${FOCUS}`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Alur kerja */}
+        {panelOpen ? (
+          <aside
+            className="absolute bottom-0 left-0 top-0 z-30 flex w-[min(300px,100%)] flex-col border-r border-[#e6e6e6] bg-white"
+            aria-label="Alur kerja"
+          >
+            <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#e6e6e6] px-3">
+              <h2 className="text-[13px] font-semibold text-[#202020]">
+                Alur kerja
+              </h2>
+
+              <button
+                type="button"
+                onClick={() => setPanelOpen(false)}
+                aria-label="Tutup panel alur kerja"
+                title="Tutup panel"
+                className={`grid h-7 w-7 place-items-center rounded-md text-[#5a5a5a] transition hover:bg-[#f0f0f0] hover:text-[#202020] ${FOCUS}`}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {/* Langkah 1: pilih peta */}
+              <StepCard n={1} title={titles[0]} state={stepState(1)}>
+                <div className="space-y-2.5">
+                  <div>
+                    <label className={LABEL} htmlFor="sel-map-q">
+                      Peta NDVI
+                    </label>
+
+                    <label className="relative block">
+                      <MagnifyingGlass
+                        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b6b6b]"
+                        aria-hidden="true"
+                      />
+                      <input
+                        id="sel-map-q"
+                        type="search"
+                        value={mapQ}
+                        onChange={(e) => setMapQ(e.target.value)}
+                        placeholder="Cari nama peta"
+                        className={`h-9 w-full rounded-md border border-[#cfcfcf] bg-white pl-8 pr-2.5 text-xs text-[#202020] placeholder:text-[#9a9a9a] ${FOCUS}`}
+                      />
+                    </label>
+
+                    <p className="mt-1.5 text-[11px] leading-4 text-[#6b6b6b]">
+                      Klik kartu untuk langsung menuju peta NDVI-nya.
+                    </p>
+
+                    {maps.length === 0 ? (
+                      <p className="mt-2 text-xs text-[#6b6b6b]">
+                        Belum ada peta.
+                      </p>
+                    ) : mapsShown.length === 0 ? (
+                      <p className="mt-2 text-xs text-[#6b6b6b]">
+                        Tidak ada peta yang cocok dengan pencarian.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 max-h-60 space-y-1.5 overflow-y-auto pr-0.5">
+                        {mapsShown.map((m) => {
+                          const on = m.id === mapId;
+                          return (
+                            <li key={m.id}>
+                              <button
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => {
+                                  if (on) goNdvi();
+                                  else setMapId(m.id);
+                                  if (isMobile()) setPanelOpen(false);
+                                }}
+                                className={`group flex w-full items-center gap-2.5 rounded-md border p-2.5 text-left transition ${FOCUS} ${
+                                  on
+                                    ? "border-[#D71920] bg-[#FDECEC]"
+                                    : "border-[#e2e2e2] bg-white hover:border-[#D71920]"
+                                }`}
+                              >
+                                <span
+                                  className={`grid h-8 w-8 shrink-0 place-items-center rounded ${
+                                    on
+                                      ? "bg-[#D71920] text-white"
+                                      : "bg-[#f0f0f0] text-[#202020]"
+                                  }`}
+                                >
+                                  <MapTrifold
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                  />
+                                </span>
+
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-semibold text-[#202020]">
+                                    {m.name}
+                                  </span>
+                                  <span className="block truncate text-[11px] text-[#6b6b6b]">
+                                    {m.area_ha != null &&
+                                      `${fmtHa(m.area_ha)} ha · `}
+                                    {m.versions.length} survey
+                                    {!m.has_boundary && " · belum ada TIFF"}
+                                  </span>
+                                  <span
+                                    className={`mt-0.5 block text-[10px] ${
+                                      on
+                                        ? "font-semibold text-[#D71920]"
+                                        : "text-[#6b6b6b]"
+                                    }`}
+                                  >
+                                    {on
+                                      ? "Sedang dipilih · klik untuk kembali ke peta"
+                                      : "Klik untuk menuju peta"}
+                                  </span>
+                                </span>
+
+                                <NavigationArrow
+                                  className="h-4 w-4 shrink-0 text-[#9a9a9a] transition group-hover:text-[#D71920]"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+
+                    {mapId != null && (
+                      <button
+                        type="button"
+                        className={`mt-2 ${LINK_BTN}`}
+                        onClick={() => setMapId(null)}
+                      >
+                        Peta dasar saja (OSM)
                       </button>
-                    );
-                  })}
-                </div>
-
-                {analysis && (
-                  <div className="mt-3 space-y-2">
-                    {!analysis.has_ndvi && <Notice>Belum ada data NDVI. Ini rekomendasi umum untuk intensitas {LEVEL_LABEL[analysis.intensity].toLowerCase()}.</Notice>}
-                    {analysis.has_ndvi && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span><strong>{analysis.cells}</strong> petak · {fmtHa(analysis.area_ha)} ha</span>
-                        <button className="font-semibold text-army-700 underline disabled:no-underline disabled:opacity-40" disabled={!analysis.cells} onClick={() => setSelected(new Set(analysis.cell_ids))}>Pilih semuanya</button>
-                      </div>
-                    )}
-                    <p className="text-sm text-army-800">{analysis.rule.notes}</p>
-                    <ul className="divide-y divide-army-200 rounded border border-army-200 bg-white">
-                      {analysis.rule.actions.map((a) => (
-                        <li key={a.title} className="px-3 py-2">
-                          <div className="flex items-baseline justify-between gap-2"><span className="font-semibold">{a.title}</span><span className="shrink-0 text-xs font-medium text-army-700">{a.interval_label}</span></div>
-                          <div className="text-xs text-army-600">Tindakan {a.type} · intensitas {a.level}</div>
-                          {a.detail && <div className="mt-0.5 text-sm text-army-800">{a.detail}</div>}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="text-xs text-army-600">{analysis.disclaimer || disclaimer}</p>
-                  </div>
-                )}
-              </section>
-
-              <section className="card p-4" aria-labelledby="pilih">
-                <h2 id="pilih" className="mb-2">Petak dipilih</h2>
-                {selectedCells.length === 0 ? (
-                  <p className="flex items-start gap-2 text-sm text-army-700"><MousePointerClick className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> Klik petak di peta untuk memilih. Tanpa pilihan, ekspor mencakup semua petak.</p>
-                ) : selectedCells.length === 1 ? (
-                  <div className="space-y-1 text-sm">
-                    <div className="flex items-center justify-between"><span className="font-display text-xl font-semibold">{selectedCells[0].cell_id}</span><IntensityBadge intensity={selectedCells[0].intensity} /></div>
-                    <div>Luas: <strong>{fmtHa(selectedCells[0].area_ha)} ha</strong>{!selectedCells[0].is_full && " (petak tepi)"}</div>
-                    <div>NDVI rata-rata: <strong>{fmtNdvi(selectedCells[0].ndvi_mean)}</strong>{selectedCells[0].ndvi_min != null && <span className="text-army-600"> (rentang {fmtNdvi(selectedCells[0].ndvi_min)} s/d {fmtNdvi(selectedCells[0].ndvi_max)})</span>}</div>
-                    {ruleOf(selectedCells[0].intensity) && (
-                      <div className="text-army-700">Saran: {ruleOf(selectedCells[0].intensity)!.actions.map((a) => `${a.title} (${a.interval_label.toLowerCase()})`).join(", ")}</div>
                     )}
                   </div>
-                ) : (
-                  <p className="text-sm"><strong>{selectedCells.length}</strong> petak · {fmtHa(selectedCells.reduce((s, c) => s + c.area_ha, 0))} ha</p>
-                )}
-                {selected.size > 0 && <button className="mt-2 text-sm font-semibold text-army-700 underline" onClick={() => setSelected(new Set())}>Kosongkan pilihan</button>}
-                <div className="mt-3 border-t border-army-200 pt-3">
-                  <div className="mb-2 text-sm font-medium text-army-800">{selected.size ? `Ekspor ${selected.size} petak` : "Ekspor semua petak"}</div>
-                  <ExportBar hrefFor={cellsHref} optionLabel="File terpisah per petak (ZIP)" disabled={!grid} />
-                </div>
-              </section>
-            </>
-          ) : (
-            <>
-              <section className="card p-4" aria-labelledby="draw">
-                <h2 id="draw" className="mb-2">Custom petak</h2>
-                {pending ? (
-                  <form onSubmit={(e) => { e.preventDefault(); savePolygon(); }} className="space-y-3">
-                    <p className="text-sm text-army-700">Polygon selesai digambar, ± {fmtHa(draftHa)} ha. Beri nama untuk menyimpan.</p>
-                    <div><label className="field-label" htmlFor="pname">Nama polygon</label><input id="pname" className="input" value={polyName} onChange={(e) => setPolyName(e.target.value)} placeholder="Contoh: Target semprot blok A" required maxLength={120} autoFocus /></div>
-                    <div className="flex gap-2"><button className="btn-primary flex-1" disabled={!polyName.trim()}>Simpan polygon</button><button type="button" className="btn-ghost" onClick={cancelDraw}>Batal</button></div>
-                  </form>
-                ) : drawing ? (
-                  <p className="text-sm text-army-700">Klik di peta untuk menambah titik sudut. Tekan <strong>Selesai</strong> bila minimal 3 titik sudah ada.</p>
-                ) : (
-                  <>
-                    <p className="mb-3 text-sm text-army-700">Gambar area target penyemprotan, simpan, lalu ekspor sebagai KML/KMZ.</p>
-                    <button className="btn-primary w-full" onClick={() => { setDrawing(true); setSelPoly(null); }}><PencilRuler className="h-4 w-4" aria-hidden /> Gambar polygon baru</button>
-                  </>
-                )}
-              </section>
 
-              <section className="card p-4" aria-labelledby="plist">
-                <h2 id="plist" className="mb-2">Polygon tersimpan</h2>
-                {polygons.length === 0 ? <p className="text-sm text-army-700">Belum ada polygon.</p> : (
-                  <ul className="space-y-2">
-                    {polygons.map((p) => (
-                      <li key={p.id} className={`rounded border p-3 ${selPoly === p.id ? "border-gold-500 bg-white" : "border-army-200 bg-army-50"}`}>
-                        <div className="flex items-start justify-between gap-2">
-                          <button className="text-left" onClick={() => { setSelPoly(p.id); setFit((f) => ({ key: f.key + 1, bounds: boundsOf(p.geometry) })); }}>
-                            <div className="font-semibold">{p.name}</div>
-                            <div className="text-xs text-army-700">{fmtHa(p.area_ha)} ha{p.owner && ` · ${p.owner}`}</div>
-                          </button>
-                          <button className="rounded p-1.5 text-alert hover:bg-red-50" aria-label={`Hapus ${p.name}`} onClick={() => removePolygon(p)}><Trash2 className="h-4 w-4" /></button>
+                  {mapId != null && (
+                    <div>
+                      <label className={LABEL} htmlFor="sel-ver">
+                        Versi data NDVI
+                      </label>
+
+                      <select
+                        id="sel-ver"
+                        className={FIELD}
+                        value={versionId ?? ""}
+                        onChange={(e) =>
+                          setVersionId(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                        disabled={!detail?.versions.length}
+                      >
+                        {!detail?.versions.length && (
+                          <option value="">Belum ada versi NDVI</option>
+                        )}
+
+                        {detail?.versions.map((v) => (
+                          <option
+                            key={v.id}
+                            value={v.id}
+                            disabled={v.status !== "ready"}
+                          >
+                            v{v.version} · {v.label}
+                            {v.is_active ? " (aktif)" : ""}
+                            {v.status !== "ready"
+                              ? ` [${
+                                  v.status === "processing"
+                                    ? "diproses"
+                                    : "gagal"
+                                }]`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {gridMsg && <Notice>{gridMsg}</Notice>}
+
+                  {mapId != null && summary && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className={TILE}>
+                        <div className="text-[11px] text-[#5a5a5a]">
+                          Total petak
                         </div>
-                        {p.coverage_pct != null && p.coverage_pct < 99.5 && <div className="mt-1 text-xs text-alert">{Math.round(100 - p.coverage_pct)}% area di luar batas lahan.</div>}
-                        {selPoly === p.id && (
-                          <div className="mt-3">
-                            <ExportBar optionLabel="Pecah per petak 1 ha" hrefFor={(fmt, split) => `/api/exports/polygons/${p.id}?format=${fmt}${split ? "&split=true" : ""}`} />
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-[#202020]">
+                          {summary.cells}
+                        </div>
+                      </div>
+
+                      <div className={TILE}>
+                        <div className="text-[11px] text-[#5a5a5a]">
+                          Luas terpetakan
+                        </div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-[#202020]">
+                          {fmtHa(summary.area_ha)} ha
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {user?.role === "admin" && (
+                    <Link
+                      href="/upload-peta"
+                      className={`inline-block ${LINK_BTN}`}
+                    >
+                      Upload peta baru
+                    </Link>
+                  )}
+                </div>
+              </StepCard>
+
+              {mode === "petak" ? (
+                <>
+                  {/* Langkah 2: analisis intensitas */}
+                  <StepCard
+                    n={2}
+                    title={titles[1]}
+                    state={stepState(2)}
+                    badge={
+                      <span className="rounded bg-[#efefef] px-1.5 py-0.5 text-[10px] font-semibold text-[#5a5a5a]">
+                        Opsional
+                      </span>
+                    }
+                  >
+                    {!ready ? (
+                      locked
+                    ) : (
+                      <>
+                        <p className="mb-2.5 text-xs leading-5 text-[#5a5a5a]">
+                          Pilih intensitas untuk menandai petak di peta dan
+                          melihat tindakan yang disarankan.
+                        </p>
+
+                        <div className="space-y-1.5">
+                          {LEVELS.map((k) => {
+                            const b = summary?.by_intensity[k];
+                            const on = intensity === k;
+                            const total = summary?.cells ?? 0;
+                            const pct =
+                              total && b
+                                ? Math.round((b.cells / total) * 100)
+                                : 0;
+
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => setIntensity(on ? null : k)}
+                                aria-pressed={on}
+                                className={`w-full rounded-md border p-2.5 text-left transition ${FOCUS} ${
+                                  on
+                                    ? "border-[#D71920] bg-[#FDECEC]"
+                                    : "border-[#e2e2e2] bg-white hover:border-[#9a9a9a]"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-2 text-xs font-semibold text-[#202020]">
+                                    <span
+                                      className="h-2.5 w-2.5 rounded-sm"
+                                      style={{ background: LEVEL_COLOR[k] }}
+                                    />
+                                    {LEVEL_LABEL[k]}
+                                  </span>
+
+                                  <span className="text-[11px] font-semibold tabular-nums text-[#3a3a3a]">
+                                    {b?.cells ?? 0} petak{" "}
+                                    <span className="font-normal text-[#5a5a5a]">
+                                      ({pct}%)
+                                    </span>
+                                  </span>
+                                </div>
+
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#ececec]">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{
+                                      width: `${pct}%`,
+                                      background: LEVEL_COLOR[k],
+                                    }}
+                                  />
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {intensity && (
+                          <div className="mt-3 space-y-2.5 border-t border-[#efefef] pt-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <h4 className="text-xs font-bold text-[#202020]">
+                                Saran tindakan
+                              </h4>
+
+                              <button
+                                type="button"
+                                className={LINK_BTN}
+                                onClick={() => setIntensity(null)}
+                              >
+                                Hapus pilihan
+                              </button>
+                            </div>
+
+                            {!analysis ? (
+                              <p className="text-xs text-[#5a5a5a]">
+                                Memuat analisis rekomendasi...
+                              </p>
+                            ) : (
+                              <>
+                                {!analysis.has_ndvi ? (
+                                  <Notice>
+                                    Belum ada data NDVI. Ini rekomendasi umum
+                                    untuk intensitas{" "}
+                                    {LEVEL_LABEL[
+                                      analysis.intensity
+                                    ].toLowerCase()}
+                                    .
+                                  </Notice>
+                                ) : (
+                                  <p className="text-[11px] text-[#3a3a3a]">
+                                    <strong>{analysis.cells}</strong> petak ·{" "}
+                                    {fmtHa(analysis.area_ha)} ha
+                                  </p>
+                                )}
+
+                                <p className="text-xs leading-5 text-[#3a3a3a]">
+                                  {analysis.rule.notes}
+                                </p>
+
+                                <ul className="divide-y divide-[#efefef] rounded-md border border-[#e2e2e2]">
+                                  {analysis.rule.actions.map((a) => (
+                                    <li key={a.title} className="px-2.5 py-2">
+                                      <div className="flex items-baseline justify-between gap-2">
+                                        <span className="text-xs font-semibold text-[#202020]">
+                                          {a.title}
+                                        </span>
+                                        <span className="shrink-0 text-[11px] text-[#5a5a5a]">
+                                          {a.interval_label}
+                                        </span>
+                                      </div>
+
+                                      <div className="mt-0.5 text-[11px] text-[#5a5a5a]">
+                                        Tindakan {a.type} · intensitas {a.level}
+                                      </div>
+
+                                      {a.detail && (
+                                        <div className="mt-1 text-xs leading-4 text-[#3a3a3a]">
+                                          {a.detail}
+                                        </div>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+
+                                <p className="text-[11px] leading-4 text-[#5a5a5a]">
+                                  {analysis.disclaimer || disclaimer}
+                                </p>
+                              </>
+                            )}
                           </div>
                         )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            </>
-          )}
-        </aside>
+                      </>
+                    )}
+                  </StepCard>
+
+                  {/* Langkah 3: pilih petak */}
+                  <StepCard n={3} title={titles[2]} state={stepState(3)}>
+                    {!ready ? (
+                      locked
+                    ) : (
+                      <div className="space-y-2.5">
+                        {selectedCells.length === 0 ? (
+                          <>
+                            <p className="flex items-start gap-2 text-xs leading-5 text-[#3a3a3a]">
+                              <CursorClick
+                                className="mt-0.5 h-4 w-4 shrink-0 text-[#D71920]"
+                                aria-hidden="true"
+                              />
+                              Klik petak pada peta untuk memilihnya. Klik lagi
+                              untuk membatalkan.
+                            </p>
+
+                            {intensity &&
+                              analysis?.has_ndvi &&
+                              analysis.cells > 0 && (
+                                <button
+                                  type="button"
+                                  className={`w-full ${BTN_OUTLINE}`}
+                                  onClick={() =>
+                                    setSelected(new Set(analysis.cell_ids))
+                                  }
+                                >
+                                  Pilih semua {analysis.cells} petak intensitas{" "}
+                                  {LEVEL_LABEL[
+                                    analysis.intensity
+                                  ].toLowerCase()}
+                                </button>
+                              )}
+                          </>
+                        ) : selectedCells.length === 1 ? (
+                          <div className="space-y-1.5 text-xs text-[#3a3a3a]">
+                            <div className="flex items-center justify-between gap-2">
+                              <strong className="text-base text-[#202020]">
+                                {selectedCells[0].cell_id}
+                              </strong>
+                              <IntensityBadge
+                                intensity={selectedCells[0].intensity}
+                              />
+                            </div>
+
+                            <div>
+                              Luas:{" "}
+                              <strong>
+                                {fmtHa(selectedCells[0].area_ha)} ha
+                              </strong>
+                              {!selectedCells[0].is_full && " (petak tepi)"}
+                            </div>
+
+                            <div>
+                              NDVI rata-rata:{" "}
+                              <strong>
+                                {fmtNdvi(selectedCells[0].ndvi_mean)}
+                              </strong>
+                              {selectedCells[0].ndvi_min != null && (
+                                <span className="text-[#5a5a5a]">
+                                  {" "}
+                                  (rentang {fmtNdvi(
+                                    selectedCells[0].ndvi_min
+                                  )}{" "}
+                                  s/d {fmtNdvi(selectedCells[0].ndvi_max)})
+                                </span>
+                              )}
+                            </div>
+
+                            {ruleOf(selectedCells[0].intensity) && (
+                              <div className="pt-1 text-[#3a3a3a]">
+                                Saran:{" "}
+                                {ruleOf(selectedCells[0].intensity)!
+                                  .actions.map(
+                                    (a) =>
+                                      `${
+                                        a.title
+                                      } (${a.interval_label.toLowerCase()})`
+                                  )
+                                  .join(", ")}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[#3a3a3a]">
+                            <strong>{selectedCells.length}</strong> petak ·{" "}
+                            {fmtHa(
+                              selectedCells.reduce((s, c) => s + c.area_ha, 0)
+                            )}{" "}
+                            ha
+                          </p>
+                        )}
+
+                        {selectedCells.length > 0 && (
+                          <button
+                            type="button"
+                            className={LINK_BTN}
+                            onClick={() => setSelected(new Set())}
+                          >
+                            Kosongkan pilihan
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </StepCard>
+
+                  {/* Langkah 4: ekspor */}
+                  <StepCard n={4} title={titles[3]} state={stepState(4)}>
+                    {!ready ? (
+                      locked
+                    ) : (
+                      <>
+                        <p className="mb-2.5 text-xs leading-5 text-[#3a3a3a]">
+                          {selectedIds.length
+                            ? `Ekspor ${selectedIds.length} petak terpilih.`
+                            : "Belum ada petak dipilih, jadi ekspor mencakup semua petak."}
+                        </p>
+
+                        <ExportBar
+                          hrefFor={cellsHref}
+                          optionLabel="Pisahkan file per petak (ZIP)"
+                          disabled={!grid}
+                        />
+                      </>
+                    )}
+                  </StepCard>
+                </>
+              ) : (
+                <>
+                  {/* Langkah 2: gambar polygon */}
+                  <StepCard n={2} title={titles[1]} state={stepState(2)}>
+                    {!ready ? (
+                      locked
+                    ) : pending ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          savePolygon();
+                        }}
+                        className="space-y-3"
+                      >
+                        <p className="text-xs leading-5 text-[#3a3a3a]">
+                          Polygon selesai digambar, ± {fmtHa(draftHa)} ha. Beri
+                          nama untuk menyimpan.
+                        </p>
+
+                        <div>
+                          <label className={LABEL} htmlFor="pname">
+                            Nama polygon
+                          </label>
+
+                          <input
+                            id="pname"
+                            className={FIELD}
+                            value={polyName}
+                            onChange={(e) => setPolyName(e.target.value)}
+                            placeholder="Contoh: Target semprot blok A"
+                            required
+                            maxLength={120}
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            className={`flex-1 ${BTN_RED}`}
+                            disabled={!polyName.trim() || saving}
+                          >
+                            {saving ? "Menyimpan..." : "Simpan polygon"}
+                          </button>
+
+                          <button
+                            type="button"
+                            className={BTN_OUTLINE}
+                            onClick={cancelDraw}
+                            disabled={saving}
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      </form>
+                    ) : drawing ? (
+                      <div className="space-y-2">
+                        <p className="text-xs leading-5 text-[#3a3a3a]">
+                          Klik pada peta untuk menambahkan titik sudut. Minimal
+                          tiga titik untuk menyelesaikan polygon.
+                        </p>
+
+                        <div className={`${TILE} text-xs font-semibold`}>
+                          {draft.length} titik ·{" "}
+                          {draft.length >= 3
+                            ? `${fmtHa(draftHa)} ha`
+                            : "Belum membentuk area"}
+                        </div>
+
+                        <button
+                          type="button"
+                          className={`w-full ${BTN_OUTLINE}`}
+                          onClick={cancelDraw}
+                        >
+                          Batalkan digitasi
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="mb-3 text-xs leading-5 text-[#3a3a3a]">
+                          Gambar area target penyemprotan atau area kerja, lalu
+                          simpan dan ekspor.
+                        </p>
+
+                        <button
+                          type="button"
+                          className={`w-full py-2.5 ${BTN_RED}`}
+                          onClick={startDraw}
+                        >
+                          <PencilRuler className="h-4 w-4" aria-hidden="true" />
+                          Gambar polygon baru
+                        </button>
+                      </div>
+                    )}
+                  </StepCard>
+
+                  {/* Langkah 3: pilih polygon */}
+                  <StepCard
+                    n={3}
+                    title={titles[2]}
+                    state={stepState(3)}
+                    badge={
+                      ready ? (
+                        <span className="rounded bg-[#efefef] px-2 py-0.5 text-[11px] font-bold tabular-nums text-[#202020]">
+                          {polygons.length}
+                        </span>
+                      ) : undefined
+                    }
+                  >
+                    {!ready ? (
+                      locked
+                    ) : polygons.length === 0 ? (
+                      <p className="text-xs leading-5 text-[#5a5a5a]">
+                        Belum ada polygon tersimpan. Gambar polygon pertama pada
+                        langkah 2.
+                      </p>
+                    ) : (
+                      <>
+                        <label className="relative mb-2 block">
+                          <span className="sr-only">Cari polygon</span>
+                          <MagnifyingGlass
+                            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b6b6b]"
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="search"
+                            value={polyQ}
+                            onChange={(e) => setPolyQ(e.target.value)}
+                            placeholder="Cari nama atau pemilik polygon"
+                            className={`h-9 w-full rounded-md border border-[#cfcfcf] bg-white pl-8 pr-2.5 text-xs text-[#202020] placeholder:text-[#9a9a9a] ${FOCUS}`}
+                          />
+                        </label>
+                        {pq && (
+                          <p className="mb-2 text-[11px] text-[#6b6b6b]">
+                            {polygonsShown.length} dari {polygons.length}{" "}
+                            polygon
+                          </p>
+                        )}
+                        {polygonsShown.length === 0 && (
+                          <p className="text-xs leading-5 text-[#6b6b6b]">
+                            Tidak ada polygon yang cocok dengan pencarian.
+                          </p>
+                        )}
+                        <ul className="space-y-2">
+                          {polygonsShown.map((p) => (
+                            <li
+                              key={p.id}
+                              className={`rounded-md border p-2.5 ${
+                                selPoly === p.id
+                                  ? "border-[#D71920] bg-[#FDECEC]"
+                                  : "border-[#e2e2e2] bg-white"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className={`min-w-0 rounded text-left ${FOCUS}`}
+                                  onClick={() => {
+                                    setSelPoly(p.id);
+                                    setFit((f) => ({
+                                      key: f.key + 1,
+                                      bounds: boundsOf(p.geometry),
+                                    }));
+                                  }}
+                                >
+                                  <span className="block truncate text-xs font-semibold text-[#202020]">
+                                    {p.name}
+                                  </span>
+
+                                  <span className="mt-0.5 block text-[11px] text-[#5a5a5a]">
+                                    {fmtHa(p.area_ha)} ha
+                                    {p.owner && ` · ${p.owner}`}
+                                  </span>
+                                </button>
+
+                                {confirmDel !== p.id && (
+                                  <button
+                                    type="button"
+                                    className={`rounded-md p-1.5 text-[#A3121A] transition hover:bg-[#FDECEC] ${FOCUS}`}
+                                    aria-label={`Hapus ${p.name}`}
+                                    onClick={() => setConfirmDel(p.id)}
+                                  >
+                                    <Trash className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {p.coverage_pct != null &&
+                                p.coverage_pct < 99.5 && (
+                                  <div className="mt-2 text-[11px] text-[#A3121A]">
+                                    {Math.round(100 - p.coverage_pct)}% area
+                                    berada di luar batas lahan.
+                                  </div>
+                                )}
+
+                              {confirmDel === p.id && (
+                                <div className="mt-2.5 flex items-center gap-2 border-t border-[#efefef] pt-2.5">
+                                  <span className="flex-1 text-xs font-semibold text-[#202020]">
+                                    Hapus polygon ini?
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    className={`${BTN_RED} px-2.5 py-1.5`}
+                                    onClick={() => removePolygon(p)}
+                                  >
+                                    Ya, hapus
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className={`${BTN_OUTLINE} px-2.5 py-1.5`}
+                                    onClick={() => setConfirmDel(null)}
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </StepCard>
+
+                  {/* Langkah 4: ekspor */}
+                  <StepCard n={4} title={titles[3]} state={stepState(4)}>
+                    {!ready ? (
+                      locked
+                    ) : !selectedPolygon ? (
+                      <p className="text-xs leading-5 text-[#5a5a5a]">
+                        Pilih satu polygon pada langkah 3 untuk mengekspornya.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="mb-2.5 text-xs leading-5 text-[#3a3a3a]">
+                          Ekspor <strong>{selectedPolygon.name}</strong>.
+                        </p>
+
+                        <ExportBar
+                          optionLabel="Pecah per petak 1 ha"
+                          hrefFor={(fmt, split) =>
+                            `/api/exports/polygons/${
+                              selectedPolygon.id
+                            }?format=${fmt}${split ? "&split=true" : ""}`
+                          }
+                        />
+                      </>
+                    )}
+                  </StepCard>
+                </>
+              )}
+            </div>
+          </aside>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            aria-label="Buka panel alur kerja"
+            title="Buka panel alur kerja"
+            className={`absolute left-3 top-3 z-30 grid h-9 w-9 place-items-center rounded-md border border-[#e6e6e6] bg-white shadow-[0_4px_16px_rgba(32,32,32,0.12)] hover:bg-[#f4f4f4] ${FOCUS}`}
+          >
+            <SidebarSimple className="h-[18px] w-[18px]" aria-hidden="true" />
+          </button>
+        )}
+
+        {/* Laci peta survey */}
+        {surveyOpen && (
+          <aside
+            className="absolute bottom-0 right-0 top-0 z-30 flex w-[min(320px,100%)] flex-col border-l border-[#e6e6e6] bg-white"
+            aria-label="Peta survey"
+          >
+            <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#e6e6e6] px-3">
+              <h2 className="text-[13px] font-semibold text-[#202020]">
+                Peta survey
+              </h2>
+              <button
+                type="button"
+                onClick={() => setSurveyOpen(false)}
+                aria-label="Tutup laci peta survey"
+                className={`grid h-7 w-7 place-items-center rounded-md text-[#5a5a5a] transition hover:text-[#D71920] ${FOCUS}`}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="shrink-0 border-b border-[#ececec] p-2.5">
+              <label className="relative block">
+                <span className="sr-only">Cari survey</span>
+                <MagnifyingGlass
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b6b6b]"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  value={surveyQ}
+                  onChange={(e) => setSurveyQ(e.target.value)}
+                  placeholder="Cari survey, bulan, atau catatan"
+                  className={`h-9 w-full rounded-md border border-[#cfcfcf] bg-white pl-8 pr-2.5 text-xs text-[#202020] placeholder:text-[#9a9a9a] ${FOCUS}`}
+                />
+              </label>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {mapId == null ? (
+                <p className="p-3 text-xs leading-5 text-[#6b6b6b]">
+                  Pilih peta pada panel Alur kerja untuk melihat riwayat survey.
+                </p>
+              ) : surveyList.length === 0 ? (
+                <p className="p-3 text-xs leading-5 text-[#6b6b6b]">
+                  Belum ada survey untuk peta ini.
+                </p>
+              ) : surveyShown.length === 0 ? (
+                <p className="p-3 text-xs leading-5 text-[#6b6b6b]">
+                  Tidak ada survey yang cocok dengan pencarian.
+                </p>
+              ) : (
+                surveyGroups.map(([month, items]) => (
+                  <section
+                    key={month}
+                    className="border-b border-[#ececec] p-3"
+                  >
+                    <h3 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#6b6b6b]">
+                      {month}
+                      {month === thisMonth && (
+                        <span className="rounded bg-[#FDECEC] px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-[#D71920]">
+                          Bulan ini
+                        </span>
+                      )}
+                    </h3>
+
+                    <ul className="space-y-2">
+                      {items.map((v) => {
+                        const on = v.id === versionId;
+                        const ok = v.status === "ready";
+                        return (
+                          <li key={v.id}>
+                            <button
+                              type="button"
+                              disabled={!ok}
+                              onClick={() => setVersionId(v.id)}
+                              aria-pressed={on}
+                              className={`flex w-full gap-2.5 rounded-md border p-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS} ${
+                                on
+                                  ? "border-[#D71920] bg-[#FDECEC]"
+                                  : "border-[#e2e2e2] bg-white hover:border-[#D71920]"
+                              }`}
+                            >
+                              <SurveyThumb
+                                url={
+                                  ok && v.has_tiles
+                                    ? `${window.location.origin}/api/maps/${mapId}/versions/${v.id}/tiles.pmtiles`
+                                    : null
+                                }
+                                bounds={v.bounds}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="min-w-0 truncate text-xs font-semibold text-[#202020]">
+                                    {v.label}
+                                  </span>
+                                  <span className="shrink-0 text-[11px] tabular-nums text-[#6b6b6b]">
+                                    v{v.version}
+                                  </span>
+                                </div>
+
+                                <div className="mt-1 text-[11px] text-[#6b6b6b]">
+                                  {new Date(v.created_at).toLocaleDateString(
+                                    "id-ID",
+                                    {
+                                      day: "numeric",
+                                      month: "short",
+                                      year: "numeric",
+                                    }
+                                  )}
+                                  {v.stats &&
+                                    ` · NDVI rata-rata ${fmtNdvi(
+                                      v.stats.mean
+                                    )}`}
+                                </div>
+
+                                {(v.is_active || !ok) && (
+                                  <div className="mt-1.5 flex gap-1.5">
+                                    {v.is_active && (
+                                      <span className="rounded bg-[#202020] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                        Aktif
+                                      </span>
+                                    )}
+                                    {!ok && (
+                                      <span className="rounded bg-[#efefef] px-1.5 py-0.5 text-[10px] font-semibold text-[#5a5a5a]">
+                                        {v.status === "processing"
+                                          ? "Diproses"
+                                          : "Gagal"}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {v.notes && (
+                                  <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-[#3a3a3a]">
+                                    {v.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ))
+              )}
+
+              {user?.role === "admin" && (
+                <div className="p-3">
+                  <Link
+                    href="/upload-peta"
+                    className={`inline-block ${LINK_BTN}`}
+                  >
+                    Unggah survey baru
+                  </Link>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+
+        {/* Toolbar bawah, seperti toolbar Figma */}
+        <div
+          className={`absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-[#e6e6e6] bg-white p-1 shadow-[0_8px_28px_rgba(32,32,32,0.16)] ${shift}`}
+          role="toolbar"
+          aria-label="Alat peta"
+        >
+          {MODES.map(([m, label]) => {
+            const Icon = m === "petak" ? GridFour : PencilRuler;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => switchMode(m)}
+                aria-pressed={mode === m}
+                title={label}
+                className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${FOCUS} ${
+                  mode === m
+                    ? "bg-[#D71920] text-white"
+                    : "text-[#202020] hover:text-[#D71920]"
+                }`}
+              >
+                <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            );
+          })}
+
+          <span className="mx-1 h-5 w-px bg-[#e6e6e6]" aria-hidden="true" />
+
+          <button
+            type="button"
+            onClick={() => {
+              setLayersOpen((o) => !o);
+              setSurveyOpen(false);
+            }}
+            aria-expanded={layersOpen}
+            title="Layer dan legenda"
+            className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${FOCUS} ${
+              layersOpen
+                ? "bg-[#FDECEC] text-[#D71920]"
+                : "text-[#202020] hover:text-[#D71920]"
+            }`}
+          >
+            <Stack className="h-[18px] w-[18px]" aria-hidden="true" />
+            <span className="hidden sm:inline">Layer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSurveyOpen((o) => !o);
+              setLayersOpen(false);
+            }}
+            aria-expanded={surveyOpen}
+            title="Peta survey"
+            className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${FOCUS} ${
+              surveyOpen
+                ? "bg-[#FDECEC] text-[#D71920]"
+                : "text-[#202020] hover:text-[#D71920]"
+            }`}
+          >
+            <CalendarBlank className="h-[18px] w-[18px]" aria-hidden="true" />
+            <span className="hidden sm:inline">Survey</span>
+          </button>
+        </div>
+
+        {layersOpen && (
+          <section
+            className={`absolute bottom-[68px] left-1/2 z-30 w-[min(260px,calc(100%-24px))] -translate-x-1/2 rounded-lg border border-[#e6e6e6] bg-white p-3 shadow-[0_8px_28px_rgba(32,32,32,0.16)] ${shift}`}
+            aria-label="Layer dan legenda"
+          >
+            <h2 className="mb-2 text-xs font-bold text-[#202020]">
+              Layer peta
+            </h2>
+
+            <div className="space-y-0.5">
+              {LAYER_ITEMS.map(([k, label, desc]) => (
+                <label
+                  key={k}
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 transition hover:bg-[#f4f4f4]"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-[#202020]">
+                      {label}
+                    </span>
+                    <span className="block text-[11px] text-[#5a5a5a]">
+                      {desc}
+                    </span>
+                  </span>
+
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 accent-[#D71920]"
+                    checked={layers[k]}
+                    onChange={(e) =>
+                      setLayers({
+                        ...layers,
+                        [k]: e.target.checked,
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+
+            <h2 className="mb-2 mt-3 border-t border-[#efefef] pt-3 text-xs font-bold text-[#202020]">
+              Legenda intensitas
+            </h2>
+
+            <div className="space-y-2">
+              {LEVELS.map((k) => (
+                <div
+                  key={k}
+                  className="flex items-center justify-between text-xs"
+                >
+                  <span className="flex items-center gap-2 text-[#3a3a3a]">
+                    <span
+                      className="h-3 w-3 rounded-sm"
+                      style={{ background: LEVEL_COLOR[k] }}
+                    />
+                    {LEVEL_LABEL[k]}
+                  </span>
+
+                  <span className="tabular-nums text-[11px] text-[#5a5a5a]">
+                    {summary?.by_intensity[k]?.cells ?? 0} petak
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Drawing controls */}
+        {mode === "custom" && drawing && (
+          <div
+            className={`absolute bottom-[68px] left-1/2 z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-[#e6e6e6] bg-white px-3 py-2 text-xs text-[#202020] shadow-[0_8px_28px_rgba(32,32,32,0.16)] ${shift}`}
+          >
+            <span className="font-medium tabular-nums">
+              {draft.length} titik
+              {draft.length >= 3 && ` · ± ${fmtHa(draftHa)} ha`}
+            </span>
+
+            <button
+              type="button"
+              className={`rounded-md border border-[#d4d4d4] p-1.5 transition hover:bg-[#f4f4f4] disabled:opacity-40 ${FOCUS}`}
+              disabled={!draft.length}
+              onClick={undoPoint}
+              title="Hapus titik terakhir (Backspace)"
+              aria-label="Hapus titik terakhir"
+            >
+              <ArrowUUpLeft className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              className={`rounded-md bg-[#D71920] px-3 py-1.5 font-semibold text-white transition hover:bg-[#B8141A] disabled:opacity-40 ${FOCUS}`}
+              disabled={draft.length < 3}
+              onClick={finishDraw}
+              title="Selesai (Enter)"
+            >
+              Selesai
+            </button>
+
+            <button
+              type="button"
+              className={`rounded-md border border-[#d4d4d4] px-3 py-1.5 transition hover:bg-[#f4f4f4] ${FOCUS}`}
+              onClick={cancelDraw}
+              title="Batal (Esc)"
+            >
+              Batal
+            </button>
+          </div>
+        )}
       </div>
-    </div>
+    </IconContext.Provider>
   );
 }

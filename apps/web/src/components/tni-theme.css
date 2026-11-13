@@ -1,0 +1,150 @@
+/*
+ * SIMPONI TP — Figma-style light UI
+ * Putih + merah #D71920, teks hitam #202020.
+ * Dipakai oleh Shell.tsx (class .tni-app-shell).
+ * Font: DM Sans (lihat app/layout.tsx -> variabel --font-sans).
+ */
+.tni-app-shell {
+  --tni-red: #d71920;
+  --tni-red-dark: #b8141a;
+  --tni-red-soft: #fdecec;
+  --tni-ink: #202020;
+  --tni-muted: #6b6b6b;
+  --tni-line: #e6e6e6;
+  --tni-canvas: #f5f5f5;
+  color: var(--tni-ink);
+  background: var(--tni-canvas);
+  font-family: var(--font-sans), "DM Sans", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.tni-app-shell main {
+  color: var(--tni-ink);
+}
+
+.tni-app-shell h1,
+.tni-app-shell h2,
+.tni-app-shell h3 {
+  color: var(--tni-ink);
+  letter-spacing: -0.02em;
+}
+.tni-app-shell h1 {
+  font-size: clamp(1.25rem, 2vw, 1.6rem);
+  line-height: 1.2;
+  font-weight: 700;
+}
+.tni-app-shell h2 {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.tni-app-shell .card {
+  border: 1px solid var(--tni-line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.tni-app-shell .input,
+.tni-app-shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.tni-app-shell select,
+.tni-app-shell textarea {
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tni-ink);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.tni-app-shell .input:focus,
+.tni-app-shell input:focus,
+.tni-app-shell select:focus,
+.tni-app-shell textarea:focus {
+  outline: none;
+  border-color: var(--tni-red);
+  box-shadow: 0 0 0 3px rgba(215, 25, 32, 0.14);
+}
+
+.tni-app-shell .btn,
+.tni-app-shell .btn-gold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  border-radius: 6px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.tni-app-shell .btn-gold {
+  border: 1px solid var(--tni-red);
+  background: var(--tni-red);
+  color: #fff;
+}
+.tni-app-shell .btn-gold:hover {
+  background: var(--tni-red-dark);
+  border-color: var(--tni-red-dark);
+}
+.tni-app-shell .btn {
+  border: 1px solid #d4d4d4;
+  background: #fff;
+  color: var(--tni-ink);
+}
+.tni-app-shell .btn:hover {
+  background: #f4f4f4;
+  border-color: #b5b5b5;
+}
+
+.tni-app-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--tni-line);
+  border-radius: 8px;
+  background: #fff;
+}
+.tni-app-shell th {
+  background: #f6f6f6;
+  color: #4a4a4a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.tni-app-shell td,
+.tni-app-shell th {
+  border-bottom: 1px solid #efefef;
+  padding: 0.65rem 0.85rem;
+}
+.tni-app-shell tr:last-child td {
+  border-bottom: 0;
+}
+
+.tni-app-shell a {
+  text-underline-offset: 3px;
+}
+.tni-app-shell button:focus-visible,
+.tni-app-shell a:focus-visible {
+  outline: 2px solid var(--tni-red);
+  outline-offset: 2px;
+}
+
+.tni-app-shell ::selection {
+  color: #fff;
+  background: var(--tni-red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tni-app-shell *,
+  .tni-app-shell *::before,
+  .tni-app-shell *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
