@@ -17,6 +17,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Flag } from "./Brand";
+import { PlaceSearch } from "./PlaceSearch";
 import { Spinner } from "./ui";
 
 const GENERAL = [
@@ -217,6 +218,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 <span className="h-5 w-px bg-[#e0e0e0]" aria-hidden="true" />
               </nav>
             )}
+
+            {pathname === "/peta-saya" && <PlaceSearch />}
 
             <div className="relative" ref={profileRef}>
               <button

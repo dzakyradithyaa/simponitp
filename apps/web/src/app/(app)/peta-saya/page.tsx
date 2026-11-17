@@ -3,10 +3,12 @@
 import {
   ArrowUUpLeft,
   CalendarBlank,
+  CaretDown,
   Check,
   CursorClick,
   GridFour,
   MagnifyingGlass,
+  PencilSimple,
   MapTrifold,
   NavigationArrow,
   DownloadSimple,
@@ -28,7 +30,12 @@ import {
   Spinner,
 } from "@/components/ui";
 import type { LayerToggles } from "@/components/MapCanvas";
+import { AnalysisCard } from "@/components/AnalysisCard";
+import { PIN_EVENT } from "@/components/PlaceSearch";
+import type { PinTarget } from "@/components/PlaceSearch";
 import { SurveyThumb } from "@/components/SurveyThumb";
+import { analyzePolygon, exportPolygonKml } from "@/lib/analysis";
+import type { PolyAnalysis } from "@/lib/analysis";
 import { api, fmtHa, fmtNdvi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { boundsOf, polygonAreaHa } from "@/lib/geo";
@@ -78,6 +85,7 @@ const LAYER_ITEMS = [
   ["grid", "Petak 1 ha", "Grid analisis"],
   ["ndvi", "Raster TIFF / NDVI", "Citra hasil pemrosesan"],
   ["polygons", "Polygon custom", "Area digitasi"],
+  ["labels", "Ukuran petak", "Panjang × lebar tiap petak"],
 ] as const;
 
 const FOCUS =
@@ -218,6 +226,7 @@ export default function PetaSayaPage() {
     grid: true,
     ndvi: true,
     polygons: true,
+    labels: true,
   });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -251,6 +260,34 @@ export default function PetaSayaPage() {
   const [surveyQ, setSurveyQ] = useState("");
   const [polyQ, setPolyQ] = useState("");
   const [mapQ, setMapQ] = useState("");
+  const [analysisOpen, setAnalysisOpen] = useState(true);
+  const [rasterOpacity, setRasterOpacity] = useState(0.6);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editRing, setEditRing] = useState<Position[]>([]);
+  const [pin, setPin] = useState<PinTarget | null>(null);
+  const [tipsOpen, setTipsOpen] = useState(true);
+  const [basemap, setBasemap] = useState<"osm" | "satellite">("osm");
+
+  // Hasil pencarian wilayah / lokasi saya datang dari navbar.
+  useEffect(() => {
+    const on = (e: Event) => setPin((e as CustomEvent<PinTarget>).detail);
+    window.addEventListener(PIN_EVENT, on);
+    return () => window.removeEventListener(PIN_EVENT, on);
+  }, []);
+
+  // Ingat status laci tips antar kunjungan.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("peta.tips") === "0") setTipsOpen(false);
+    } catch {}
+  }, []);
+  const toggleTips = () =>
+    setTipsOpen((o) => {
+      try {
+        localStorage.setItem("peta.tips", o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
 
   // Di layar kecil panel dimulai tertutup agar peta langsung terlihat.
   useEffect(() => {
@@ -300,6 +337,8 @@ export default function PetaSayaPage() {
     setAnalysis(null);
     setSelPoly(null);
     setConfirmDel(null);
+    setEditId(null);
+    setEditRing([]);
     setDraft([]);
     setDrawing(false);
     setPending(false);
@@ -428,6 +467,58 @@ export default function PetaSayaPage() {
     [selectedCells]
   );
 
+  // Analisis + masking tiap polygon custom terhadap petak NDVI (di browser).
+  const polyAnalyses = useMemo(() => {
+    const out: Record<number, PolyAnalysis> = {};
+    if (!grid) return out;
+    for (const p of polygons)
+      out[p.id] = analyzePolygon(p.geometry, grid.features);
+    return out;
+  }, [grid, polygons]);
+
+  // Saat mengedit, hasil masking dihitung ulang langsung selama titik digeser.
+  const editAnalysis = useMemo(() => {
+    if (!grid || editId == null || editRing.length < 3) return null;
+    return analyzePolygon(
+      { type: "Polygon", coordinates: [[...editRing, editRing[0]]] },
+      grid.features
+    );
+  }, [grid, editId, editRing]);
+
+  const analysisOf = (id: number) =>
+    editId === id && editAnalysis ? editAnalysis : polyAnalyses[id] ?? null;
+
+  // Peta menampilkan bentuk hasil masking, bukan gambar mentah.
+  const polygonsForMap = useMemo(
+    () =>
+      polygons.map((p) => {
+        const a =
+          editId === p.id && editAnalysis ? editAnalysis : polyAnalyses[p.id];
+        return a?.masked ? { ...p, geometry: a.masked } : p;
+      }),
+    [polygons, polyAnalyses, editId, editAnalysis]
+  );
+
+  const polygonIntensity = useMemo(() => {
+    const out: Record<number, Intensity | null> = {};
+    for (const p of polygons)
+      out[p.id] =
+        (editId === p.id && editAnalysis ? editAnalysis : polyAnalyses[p.id])
+          ?.dominant ?? null;
+    return out;
+  }, [polygons, polyAnalyses, editId, editAnalysis]);
+
+  const pendingAnalysis = useMemo(
+    () =>
+      pending && grid && draft.length >= 3
+        ? analyzePolygon(
+            { type: "Polygon", coordinates: [[...draft, draft[0]]] },
+            grid.features
+          )
+        : null,
+    [pending, grid, draft]
+  );
+
   const toggleCell = useCallback((id: string) => {
     setSelected((s) => {
       const n = new Set(s);
@@ -486,11 +577,26 @@ export default function PetaSayaPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawing, cancelDraw, finishDraw, undoPoint]);
 
+  const cancelEdit = useCallback(() => {
+    setEditId(null);
+    setEditRing([]);
+  }, []);
+
+  useEffect(() => {
+    if (editId == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelEdit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editId, cancelEdit]);
+
   const switchMode = (m: Mode) => {
     if (m === mode) return;
 
     setMode(m);
     cancelDraw();
+    cancelEdit();
     setConfirmDel(null);
 
     // Pastikan layer yang dibutuhkan mode ini tidak sedang dimatikan.
@@ -500,6 +606,7 @@ export default function PetaSayaPage() {
   };
 
   const startDraw = () => {
+    cancelEdit();
     setDrawing(true);
     setSelPoly(null);
     if (isMobile()) setPanelOpen(false);
@@ -517,6 +624,49 @@ export default function PetaSayaPage() {
 
     return `/api/exports/cells?${q}`;
   };
+
+  function startEdit(p: PolygonItem) {
+    if (p.geometry.type !== "Polygon" || drawing || pending) return;
+    setEditRing(p.geometry.coordinates[0].slice(0, -1));
+    setEditId(p.id);
+    setSelPoly(p.id);
+    setConfirmDel(null);
+    if (isMobile()) setPanelOpen(false);
+  }
+
+  // Backend belum punya endpoint ubah geometri, jadi: simpan versi baru lalu hapus yang lama.
+  async function saveEdit() {
+    const old = polygons.find((p) => p.id === editId);
+    if (!old || mapId == null || editRing.length < 3 || saving) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const created = await api.post<PolygonItem>(`/maps/${mapId}/polygons`, {
+        name: old.name,
+        note: old.note,
+        geometry: {
+          type: "Polygon",
+          coordinates: [[...editRing, editRing[0]]],
+        },
+      });
+
+      try {
+        await api.del(`/polygons/${old.id}`);
+      } catch {
+        setError("Bentuk baru tersimpan, tetapi polygon lama gagal dihapus.");
+      }
+
+      setPolygons((l) => l.map((x) => (x.id === old.id ? created : x)));
+      setSelPoly(created.id);
+      cancelEdit();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function savePolygon() {
     if (saving || mapId == null || draft.length < 3 || !polyName.trim()) return;
@@ -583,6 +733,9 @@ export default function PetaSayaPage() {
   const draftHa = polygonAreaHa(draft);
   const summary = grid?.summary;
   const selectedPolygon = polygons.find((p) => p.id === selPoly) ?? null;
+  const selectedAnalysis = selectedPolygon
+    ? analysisOf(selectedPolygon.id)
+    : null;
 
   // Data siap dipakai langkah 2-4 pada mode aktif.
   const ready = mapId != null && (mode === "petak" ? !!grid : true);
@@ -719,7 +872,13 @@ export default function PetaSayaPage() {
             selected={selected}
             highlight={mode === "petak" ? intensity : null}
             tilesUrl={tilesUrl}
-            polygons={polygons}
+            polygons={polygonsForMap}
+            polygonIntensity={polygonIntensity}
+            rasterOpacity={rasterOpacity}
+            basemap={basemap}
+            editing={editId != null ? editRing : null}
+            onEditChange={setEditRing}
+            pin={pin}
             selectedPolygonId={selPoly}
             mode={mode}
             drawing={drawing}
@@ -731,32 +890,65 @@ export default function PetaSayaPage() {
           />
         </div>
 
-        {/* Langkah aktif: pill kecil melayang, bukan bar penuh */}
-        <div
-          className={`absolute left-1/2 top-3 z-20 flex max-w-[calc(100%-72px)] -translate-x-1/2 items-center gap-2.5 rounded-full border border-[#e6e6e6] bg-white py-1.5 pl-1.5 pr-4 shadow-[0_4px_16px_rgba(32,32,32,0.12)] sm:max-w-[560px] ${shift}`}
-          role="status"
-          aria-live="polite"
-        >
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#D71920] text-xs font-bold text-white">
-            {activeStep}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-[#202020]">
-              {titles[activeStep - 1]}
-              <span className="ml-2 font-normal text-[#6b6b6b]">
-                {activeStep}/4
+        {/* Tips: laci yang bersembunyi di balik navbar, ditarik ke bawah lewat tab */}
+        <div className="pointer-events-none absolute left-1/2 top-0 z-[35] -translate-x-1/2">
+          <div
+            className="pointer-events-auto flex w-[min(340px,calc(100vw-24px))] flex-col items-center transition-transform duration-300 ease-out"
+            style={{
+              transform: tipsOpen
+                ? "translateY(0)"
+                : "translateY(calc(-100% + 24px))",
+            }}
+          >
+            <div
+              id="tips-body"
+              role="status"
+              aria-live="polite"
+              className={`w-full rounded-b-xl border-x border-b border-[#e6e6e6] bg-white px-3 pb-2.5 pt-2.5 transition-shadow duration-300 ${
+                tipsOpen ? "shadow-[0_8px_20px_rgba(32,32,32,0.14)]" : ""
+              }`}
+            >
+              <p className="flex items-center gap-2 text-xs font-semibold text-[#202020]">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#D71920] text-[10px] font-bold text-white">
+                  {activeStep}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  {titles[activeStep - 1]}
+                </span>
+                <span className="text-[10px] font-normal tabular-nums text-[#6b6b6b]">
+                  {activeStep}/4
+                </span>
+              </p>
+              <p className="mt-1.5 text-[11px] leading-4 text-[#6b6b6b]">
+                {hint}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleTips}
+              aria-expanded={tipsOpen}
+              aria-controls="tips-body"
+              title={tipsOpen ? "Sembunyikan tips" : "Tarik untuk melihat tips"}
+              className={`-mt-px flex h-6 items-center gap-1.5 rounded-b-lg border-x border-b border-[#e6e6e6] bg-white px-3 text-[10px] font-semibold text-[#202020] transition-colors hover:text-[#D71920] ${FOCUS}`}
+            >
+              Tips
+              <span className="font-normal tabular-nums text-[#6b6b6b]">
+                langkah {activeStep}
               </span>
-            </p>
-            <p className="line-clamp-2 text-[11px] leading-4 text-[#6b6b6b]">
-              {hint}
-            </p>
+              <CaretDown
+                weight="bold"
+                className={`h-3 w-3 transition-transform duration-300 ${
+                  tipsOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
           </div>
         </div>
 
         {/* Error notice */}
         {error && (
           <div
-            className="absolute left-1/2 top-20 z-40 flex w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2"
+            className="absolute left-1/2 top-28 z-40 flex w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2"
             role="alert"
           >
             <div className="min-w-0 flex-1">
@@ -976,6 +1168,17 @@ export default function PetaSayaPage() {
                     </div>
                   )}
 
+                  {mapId != null && grid && (
+                    <p className="text-[11px] leading-4 text-[#6b6b6b]">
+                      Ukuran tiap petak:{" "}
+                      <strong className="font-semibold text-[#202020]">
+                        {Math.round(grid.cell_size_m)} ×{" "}
+                        {Math.round(grid.cell_size_m)} m
+                      </strong>{" "}
+                      (1 ha). Petak tepi lahan bisa lebih kecil.
+                    </p>
+                  )}
+
                   {user?.role === "admin" && (
                     <Link
                       href="/upload-peta"
@@ -1174,62 +1377,10 @@ export default function PetaSayaPage() {
                                 </button>
                               )}
                           </>
-                        ) : selectedCells.length === 1 ? (
-                          <div className="space-y-1.5 text-xs text-[#3a3a3a]">
-                            <div className="flex items-center justify-between gap-2">
-                              <strong className="text-base text-[#202020]">
-                                {selectedCells[0].cell_id}
-                              </strong>
-                              <IntensityBadge
-                                intensity={selectedCells[0].intensity}
-                              />
-                            </div>
-
-                            <div>
-                              Luas:{" "}
-                              <strong>
-                                {fmtHa(selectedCells[0].area_ha)} ha
-                              </strong>
-                              {!selectedCells[0].is_full && " (petak tepi)"}
-                            </div>
-
-                            <div>
-                              NDVI rata-rata:{" "}
-                              <strong>
-                                {fmtNdvi(selectedCells[0].ndvi_mean)}
-                              </strong>
-                              {selectedCells[0].ndvi_min != null && (
-                                <span className="text-[#5a5a5a]">
-                                  {" "}
-                                  (rentang {fmtNdvi(
-                                    selectedCells[0].ndvi_min
-                                  )}{" "}
-                                  s/d {fmtNdvi(selectedCells[0].ndvi_max)})
-                                </span>
-                              )}
-                            </div>
-
-                            {ruleOf(selectedCells[0].intensity) && (
-                              <div className="pt-1 text-[#3a3a3a]">
-                                Saran:{" "}
-                                {ruleOf(selectedCells[0].intensity)!
-                                  .actions.map(
-                                    (a) =>
-                                      `${
-                                        a.title
-                                      } (${a.interval_label.toLowerCase()})`
-                                  )
-                                  .join(", ")}
-                              </div>
-                            )}
-                          </div>
                         ) : (
-                          <p className="text-xs text-[#3a3a3a]">
-                            <strong>{selectedCells.length}</strong> petak ·{" "}
-                            {fmtHa(
-                              selectedCells.reduce((s, c) => s + c.area_ha, 0)
-                            )}{" "}
-                            ha
+                          <p className="text-xs leading-5 text-[#3a3a3a]">
+                            <strong>{selectedCells.length}</strong> petak
+                            dipilih · detail ada di kartu Analisis di bawah.
                           </p>
                         )}
 
@@ -1285,6 +1436,18 @@ export default function PetaSayaPage() {
                           Polygon selesai digambar, ± {fmtHa(draftHa)} ha. Beri
                           nama untuk menyimpan.
                         </p>
+                        {pendingAnalysis && (
+                          <p className="text-[11px] leading-4 text-[#6b6b6b]">
+                            Hasil masking:{" "}
+                            {pendingAnalysis.hits.length
+                              ? `${
+                                  pendingAnalysis.hits.length
+                                } petak 1 ha, ${fmtHa(
+                                  pendingAnalysis.area_ha
+                                )} ha. Bagian di luar petak dipotong otomatis.`
+                              : "polygon di luar area NDVI, tidak ada petak yang tercakup."}
+                          </p>
+                        )}
 
                         <div>
                           <label className={LABEL} htmlFor="pname">
@@ -1462,6 +1625,38 @@ export default function PetaSayaPage() {
                                   </div>
                                 )}
 
+                              {selPoly === p.id && confirmDel !== p.id && (
+                                <div className="mt-2 flex items-center gap-2 border-t border-[#efefef] pt-2">
+                                  {editId === p.id ? (
+                                    <span className="text-[11px] text-[#D71920]">
+                                      Sedang mengedit. Gunakan toolbar di peta.
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className={`${BTN_OUTLINE} flex-1`}
+                                      onClick={() => startEdit(p)}
+                                      disabled={
+                                        p.geometry.type !== "Polygon" ||
+                                        drawing ||
+                                        pending
+                                      }
+                                      title={
+                                        p.geometry.type !== "Polygon"
+                                          ? "Hanya polygon tunggal yang bisa diedit"
+                                          : "Edit titik sudut polygon"
+                                      }
+                                    >
+                                      <PencilSimple
+                                        className="h-3.5 w-3.5"
+                                        aria-hidden="true"
+                                      />
+                                      Edit bentuk garis
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
                               {confirmDel === p.id && (
                                 <div className="mt-2.5 flex items-center gap-2 border-t border-[#efefef] pt-2.5">
                                   <span className="flex-1 text-xs font-semibold text-[#202020]">
@@ -1506,20 +1701,56 @@ export default function PetaSayaPage() {
                           Ekspor <strong>{selectedPolygon.name}</strong>.
                         </p>
 
-                        <ExportBar
-                          optionLabel="Pecah per petak 1 ha"
-                          hrefFor={(fmt, split) =>
-                            `/api/exports/polygons/${
-                              selectedPolygon.id
-                            }?format=${fmt}${split ? "&split=true" : ""}`
+                        <button
+                          type="button"
+                          className={`w-full ${BTN_RED}`}
+                          disabled={
+                            editId === selectedPolygon.id ||
+                            !selectedAnalysis ||
+                            selectedAnalysis.hits.length === 0
                           }
-                        />
+                          onClick={() =>
+                            selectedAnalysis &&
+                            exportPolygonKml(
+                              selectedPolygon,
+                              selectedAnalysis,
+                              rules,
+                              version
+                                ? `v${version.version} · ${version.label}`
+                                : undefined
+                            )
+                          }
+                        >
+                          <DownloadSimple
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          Unduh KML (hasil masking)
+                        </button>
+                        <p className="mt-2 text-[11px] leading-4 text-[#6b6b6b]">
+                          Bentuk dipotong tepat pada petak yang dicakup, lengkap
+                          dengan warna dan analisis tiap petak.
+                        </p>
                       </>
                     )}
                   </StepCard>
                 </>
               )}
             </div>
+            <AnalysisCard
+              mode={mode}
+              cells={selectedCells}
+              polygon={selectedPolygon}
+              polyAnalysis={selectedAnalysis}
+              hasGrid={!!grid}
+              cellSizeM={grid?.cell_size_m}
+              rules={rules}
+              open={analysisOpen}
+              onToggle={() => setAnalysisOpen((o) => !o)}
+              surveyLabel={
+                version ? `v${version.version} · ${version.label}` : undefined
+              }
+            />
           </aside>
         ) : (
           <button
@@ -1768,6 +1999,32 @@ export default function PetaSayaPage() {
             <h2 className="mb-2 text-xs font-bold text-[#202020]">
               Layer peta
             </h2>
+            <div
+              className="mb-2 grid grid-cols-2 gap-0.5 rounded-md bg-[#f0f0f0] p-0.5"
+              role="group"
+              aria-label="Peta dasar"
+            >
+              {(
+                [
+                  ["osm", "Jalan"],
+                  ["satellite", "Satelit"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setBasemap(k)}
+                  aria-pressed={basemap === k}
+                  className={`h-7 rounded text-xs font-semibold transition ${FOCUS} ${
+                    basemap === k
+                      ? "bg-white text-[#D71920] shadow-sm"
+                      : "text-[#202020] hover:text-[#D71920]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
             <div className="space-y-0.5">
               {LAYER_ITEMS.map(([k, label, desc]) => (
@@ -1799,6 +2056,29 @@ export default function PetaSayaPage() {
               ))}
             </div>
 
+            <div className="mt-2 border-t border-[#efefef] px-2 pt-2.5">
+              <label
+                htmlFor="ndvi-opacity"
+                className="flex items-center justify-between text-xs font-semibold text-[#202020]"
+              >
+                Opacity raster TIFF
+                <span className="tabular-nums text-[11px] font-normal text-[#6b6b6b]">
+                  {Math.round(rasterOpacity * 100)}%
+                </span>
+              </label>
+              <input
+                id="ndvi-opacity"
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(rasterOpacity * 100)}
+                onChange={(e) => setRasterOpacity(Number(e.target.value) / 100)}
+                disabled={!layers.ndvi}
+                className="mt-1.5 h-1.5 w-full cursor-pointer accent-[#D71920] disabled:opacity-40"
+              />
+            </div>
+
             <h2 className="mb-2 mt-3 border-t border-[#efefef] pt-3 text-xs font-bold text-[#202020]">
               Legenda intensitas
             </h2>
@@ -1824,6 +2104,38 @@ export default function PetaSayaPage() {
               ))}
             </div>
           </section>
+        )}
+
+        {/* Edit vektor polygon */}
+        {mode === "custom" && editId != null && (
+          <div
+            className={`absolute bottom-[68px] left-1/2 z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-xl border border-[#e6e6e6] bg-white px-3 py-2 text-xs text-[#202020] shadow-[0_8px_28px_rgba(32,32,32,0.16)] ${shift}`}
+          >
+            <span className="font-medium tabular-nums">
+              {editRing.length} titik · ± {fmtHa(polygonAreaHa(editRing))} ha
+            </span>
+            <span className="hidden text-[11px] text-[#6b6b6b] md:inline">
+              Seret titik · klik titik kecil untuk menambah · klik kanan titik
+              untuk menghapus
+            </span>
+            <button
+              type="button"
+              className={`rounded-md bg-[#D71920] px-3 py-1.5 font-semibold text-white transition hover:bg-[#B8141A] disabled:opacity-40 ${FOCUS}`}
+              onClick={saveEdit}
+              disabled={saving || editRing.length < 3}
+            >
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+            <button
+              type="button"
+              className={`rounded-md border border-[#d4d4d4] px-3 py-1.5 transition hover:text-[#D71920] ${FOCUS}`}
+              onClick={cancelEdit}
+              disabled={saving}
+              title="Batal (Esc)"
+            >
+              Batal
+            </button>
+          </div>
         )}
 
         {/* Drawing controls */}
