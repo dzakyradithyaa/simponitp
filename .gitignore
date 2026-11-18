@@ -39,3 +39,6 @@ Thumbs.db
 
 # Project reference documents
 *.pdf
+
+# Local browser test artifacts
+.playwright-mcp/
