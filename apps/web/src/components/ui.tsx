@@ -112,14 +112,14 @@ export function Modal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-army-900/50 p-4"
+      className="fixed inset-0 z-50 flex animate-fade-in items-end justify-center bg-army-900/50 p-0 sm:items-center sm:p-4"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="card w-full max-w-md p-5 shadow-xl"
+        className="card w-full max-w-md animate-sheet-in rounded-b-none p-5 shadow-xl sm:rounded-b-lg"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4">{title}</h2>

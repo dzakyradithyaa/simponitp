@@ -155,10 +155,10 @@ export function PlaceSearch() {
       <div
         id="place-search-panel"
         aria-hidden={!open}
-        className={`fixed right-3 top-[60px] z-50 w-[min(340px,calc(100vw-24px))] transition duration-200 ease-out ${
+        className={`fixed right-3 top-[60px] z-50 w-[min(340px,calc(100vw-24px))] transition-[transform,opacity,visibility] duration-[380ms] ease-apple ${
           open
-            ? "translate-y-0 opacity-100"
-            : "pointer-events-none -translate-y-2 opacity-0"
+            ? "visible translate-y-0 opacity-100"
+            : "pointer-events-none invisible -translate-y-3 opacity-0"
         }`}
       >
         <form

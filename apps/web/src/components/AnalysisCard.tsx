@@ -288,9 +288,17 @@ export function AnalysisCard({
           weight="bold"
         />
       </button>
-      {open && (
-        <div className="max-h-[42vh] overflow-y-auto px-3 pb-3">{body}</div>
-      )}
+      <div
+        className={`grid transition-[grid-template-rows] duration-[420ms] ease-apple ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="max-h-[32vh] overflow-y-auto px-3 pb-3 sm:max-h-[42vh]">
+            {body}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

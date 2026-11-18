@@ -7,6 +7,14 @@ import maplibregl, {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Protocol } from "pmtiles";
+import { LockSimple, LockSimpleOpen } from "@phosphor-icons/react";
+import {
+  ESRI_MAXZOOM,
+  SAT_HD_ATTR,
+  SAT_HD_MAXZOOM,
+  SAT_HD_URL,
+} from "@/lib/basemap";
+import type { Basemap } from "@/lib/basemap";
 import { useEffect, useRef, useState } from "react";
 import type {
   Bounds,
@@ -22,17 +30,33 @@ const OSM =
   process.env.NEXT_PUBLIC_TILES_STREETS ||
   "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
+const HD_SOURCE: StyleSpecification["sources"] = SAT_HD_URL
+  ? {
+      hd: {
+        type: "raster",
+        tiles: [SAT_HD_URL],
+        tileSize: 256,
+        maxzoom: SAT_HD_MAXZOOM,
+        attribution: SAT_HD_ATTR,
+      },
+    }
+  : {};
+const HD_LAYERS: StyleSpecification["layers"] = SAT_HD_URL
+  ? [{ id: "hd", type: "raster", source: "hd", layout: { visibility: "none" } }]
+  : [];
+
 const STYLE: StyleSpecification = {
   version: 8,
   glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
   sources: {
+    ...HD_SOURCE,
     esri: {
       type: "raster",
       tiles: [
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       ],
       tileSize: 256,
-      maxzoom: 19,
+      maxzoom: ESRI_MAXZOOM,
       attribution:
         "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
     },
@@ -53,6 +77,7 @@ const STYLE: StyleSpecification = {
       source: "esri",
       layout: { visibility: "none" },
     },
+    ...HD_LAYERS,
   ],
 };
 
@@ -83,7 +108,9 @@ interface Props {
   polygonIntensity?: Record<number, Intensity | null>;
   selectedPolygonId: number | null;
   rasterOpacity?: number;
-  basemap?: "osm" | "satellite";
+  basemap?: Basemap;
+  compassClass?: string; // posisi kompas (kelas Tailwind, mis. "right-3")
+  pinSets?: { id: number; coords: Position[] }[]; // titik sudut polygon custom
   editing?: Position[] | null; // ring terbuka (tanpa titik penutup) yang sedang diedit
   onEditChange?: (ring: Position[]) => void;
   pin?: {
@@ -106,6 +133,48 @@ function setData(map: MLMap, id: string, data: object) {
   (map.getSource(id) as GeoJSONSource | undefined)?.setData(
     data as Parameters<GeoJSONSource["setData"]>[0]
   );
+}
+
+// Pin 3D berdiri: kepala bola berkilau, jarum logam, dan bayangan di tanah.
+const PIN_SVG = `<svg width="28" height="46" viewBox="0 0 28 46" aria-hidden="true">
+<defs>
+<radialGradient id="pin-hl" cx="36%" cy="30%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#000" stop-opacity=".38"/></radialGradient>
+<linearGradient id="pin-nd" x1="0" x2="1"><stop offset="0" stop-color="#f2f2f2"/><stop offset=".5" stop-color="#9a9a9a"/><stop offset="1" stop-color="#4a4a4a"/></linearGradient>
+<radialGradient id="pin-sh"><stop offset="0" stop-color="#000" stop-opacity=".45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+</defs>
+<ellipse cx="14" cy="41" rx="8" ry="2.6" fill="url(#pin-sh)"/>
+<path d="M12.6 21 L15.4 21 L14 41 Z" fill="url(#pin-nd)"/>
+<circle cx="14" cy="12" r="10" style="fill:var(--pin)"/>
+<circle cx="14" cy="12" r="10" fill="url(#pin-hl)"/>
+<ellipse cx="10.6" cy="7.6" rx="2.6" ry="1.7" fill="#fff" fill-opacity=".75" transform="rotate(-28 10.6 7.6)"/>
+</svg>`;
+
+function makePin(
+  sel: boolean,
+  opts: { label?: string; interactive?: boolean } = {}
+): HTMLElement {
+  const el = document.createElement("div");
+  el.style.cssText = `width:28px;height:46px;pointer-events:${
+    opts.interactive ? "auto" : "none"
+  };${opts.interactive ? "cursor:grab;" : ""}`;
+  el.style.setProperty("--pin", sel ? "#D71920" : "#2b2b2b");
+  const inner = document.createElement("div");
+  inner.style.cssText = "width:100%;height:100%";
+  inner.innerHTML = opts.label
+    ? PIN_SVG.replace(
+        "</svg>",
+        `<text x="14" y="15.2" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" style="font-family:'DM Sans',system-ui,sans-serif">${opts.label}</text></svg>`
+      )
+    : PIN_SVG;
+  el.appendChild(inner);
+  inner.animate(
+    [
+      { transform: "translateY(-18px) scale(.6)", opacity: 0 },
+      { transform: "translateY(0) scale(1)", opacity: 1 },
+    ],
+    { duration: 420, easing: "cubic-bezier(0.32,0.72,0,1)" }
+  );
+  return el;
 }
 
 // Teks ukuran petak: petak penuh = sisi grid, petak tepi = perkiraan dari kotak batasnya.
@@ -135,6 +204,13 @@ export default function MapCanvas(props: Props) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const pinRef = useRef<maplibregl.Marker | null>(null);
+  const pinMarkers = useRef(
+    new Map<string, { m: maplibregl.Marker; el: HTMLElement }>()
+  );
+  const editMarkers = useRef<maplibregl.Marker[]>([]);
+  const draggingEdit = useRef<number | null>(null);
+  const [bearing, setBearing] = useState(0);
+  const [lock, setLock] = useState(false);
   const [ready, setReady] = useState(false);
   const live = useRef(props); // latest props for long-lived event handlers
   live.current = props;
@@ -339,6 +415,8 @@ export default function MapCanvas(props: Props) {
           "circle-stroke-width": 2,
         },
       });
+      map.setLayoutProperty("draft-pts", "visibility", "none");
+      map.setLayoutProperty("edit-vtx", "visibility", "none");
       setReady(true);
     });
 
@@ -450,7 +528,13 @@ export default function MapCanvas(props: Props) {
       map.getCanvas().style.cursor = "";
     });
 
+    map.on("rotate", () => setBearing(map.getBearing()));
+
     return () => {
+      editMarkers.current.forEach((mk) => mk.remove());
+      editMarkers.current.length = 0;
+      pinMarkers.current.forEach((v) => v.m.remove());
+      pinMarkers.current.clear();
       map.remove();
       mapRef.current = null;
       setReady(false);
@@ -589,16 +673,154 @@ export default function MapCanvas(props: Props) {
     else map.doubleClickZoom.enable();
   }, [map, props.drawing, props.editing]);
 
-  // --- peta dasar: jalan (OSM) atau satelit (Esri) ---
+  // --- kunci arah utara ---
   useEffect(() => {
     if (!ready || !map) return;
-    const sat = props.basemap === "satellite";
-    map.setLayoutProperty("osm", "visibility", sat ? "none" : "visible");
-    map.setLayoutProperty("esri", "visibility", sat ? "visible" : "none");
+    if (lock) {
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
+      map.easeTo({ bearing: 0, pitch: 0, duration: 600 });
+    } else {
+      map.dragRotate.enable();
+      map.touchZoomRotate.enableRotation();
+    }
+  }, [ready, map, lock]);
+
+  // --- pin 3D di tiap titik sudut polygon custom (dan titik yang sedang digambar) ---
+  useEffect(() => {
+    if (!ready || !map) return;
+    const want = new Map<
+      string,
+      { c: Position; sel: boolean; label?: string }
+    >();
+    if (props.mode === "custom") {
+      if (props.layers.polygons)
+        for (const set of props.pinSets ?? [])
+          set.coords.forEach((c, i) =>
+            want.set(`p${set.id}:${i}:${c[0]}:${c[1]}`, {
+              c,
+              sel: set.id === props.selectedPolygonId,
+            })
+          );
+      props.draft.forEach((c, i) =>
+        want.set(`d${i}:${c[0]}:${c[1]}`, {
+          c,
+          sel: true,
+          label: String(i + 1),
+        })
+      );
+    }
+    for (const [k, v] of pinMarkers.current)
+      if (!want.has(k)) {
+        v.m.remove();
+        pinMarkers.current.delete(k);
+      }
+    for (const [k, w] of want) {
+      const ex = pinMarkers.current.get(k);
+      if (ex) {
+        ex.el.style.setProperty("--pin", w.sel ? "#D71920" : "#2b2b2b");
+        continue;
+      }
+      const el = makePin(w.sel, { label: w.label });
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor: "bottom",
+        offset: [0, 5],
+      })
+        .setLngLat(w.c)
+        .addTo(map);
+      pinMarkers.current.set(k, { m: marker, el });
+    }
+  }, [
+    ready,
+    map,
+    props.mode,
+    props.layers.polygons,
+    props.pinSets,
+    props.selectedPolygonId,
+    props.draft,
+  ]);
+
+  // --- pin 3D yang bisa diseret saat mengedit polygon ---
+  useEffect(() => {
+    if (!ready || !map) return;
+    const ring = props.editing;
+    const list = editMarkers.current;
+    if (!ring || ring.length < 3) {
+      list.forEach((mk) => mk.remove());
+      list.length = 0;
+      return;
+    }
+    while (list.length > ring.length) list.pop()?.remove();
+    while (list.length < ring.length) {
+      const i = list.length;
+      const el = makePin(true, { label: String(i + 1), interactive: true });
+      const mk = new maplibregl.Marker({
+        element: el,
+        anchor: "bottom",
+        offset: [0, 5],
+        draggable: true,
+      })
+        .setLngLat(ring[i])
+        .addTo(map);
+      mk.on("dragstart", () => {
+        draggingEdit.current = i;
+      });
+      mk.on("drag", () => {
+        const p = live.current;
+        if (!p.editing || !p.onEditChange) return;
+        const ll = mk.getLngLat();
+        const r = p.editing.slice();
+        r[i] = [ll.lng, ll.lat];
+        p.onEditChange(r);
+      });
+      mk.on("dragend", () => {
+        draggingEdit.current = null;
+      });
+      const del = (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const p = live.current;
+        if (!p.editing || !p.onEditChange || p.editing.length <= 3) return;
+        const r = p.editing.slice();
+        r.splice(i, 1);
+        p.onEditChange(r);
+      };
+      el.addEventListener("contextmenu", del);
+      el.addEventListener("dblclick", del);
+      list.push(mk);
+    }
+    ring.forEach((c, i) => {
+      if (draggingEdit.current !== i) list[i].setLngLat(c);
+      const t = list[i].getElement().querySelector("text");
+      if (t) t.textContent = String(i + 1);
+    });
+  }, [ready, map, props.editing]);
+
+  // --- peta dasar: jalan (OSM), satelit (Esri), atau satelit HD (opsional) ---
+  useEffect(() => {
+    if (!ready || !map) return;
+    const b = props.basemap ?? "osm";
+    map.setLayoutProperty(
+      "osm",
+      "visibility",
+      b === "osm" ? "visible" : "none"
+    );
+    map.setLayoutProperty(
+      "esri",
+      "visibility",
+      b === "satellite" ? "visible" : "none"
+    );
+    if (map.getLayer("hd"))
+      map.setLayoutProperty(
+        "hd",
+        "visibility",
+        b === "hd" ? "visible" : "none"
+      );
     map.setPaintProperty(
       "boundary-line",
       "line-color",
-      sat ? "#ffffff" : "#202020"
+      b === "osm" ? "#202020" : "#ffffff"
     );
   }, [ready, map, props.basemap]);
 
@@ -690,11 +912,62 @@ export default function MapCanvas(props: Props) {
 
   // inline style: maplibre-gl.css sets .maplibregl-map { position: relative }, which would beat a utility class
   return (
-    <div
-      ref={el}
-      style={{ position: "absolute", inset: 0 }}
-      role="application"
-      aria-label="Peta lahan"
-    />
+    <div style={{ position: "absolute", inset: 0 }}>
+      <div
+        ref={el}
+        style={{ position: "absolute", inset: 0 }}
+        role="application"
+        aria-label="Peta lahan"
+      />
+      <div
+        className={`absolute top-3 z-10 flex flex-col items-center gap-1.5 transition-[right] duration-[420ms] ease-apple ${
+          props.compassClass ?? "right-3"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() =>
+            mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: 600 })
+          }
+          aria-label="Arahkan peta ke utara"
+          title="Hadap utara"
+          className="grid h-9 w-9 place-items-center rounded-full border border-[#e6e6e6] bg-white shadow-[0_4px_16px_rgba(32,32,32,0.14)] transition-colors hover:border-[#D71920] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D71920]"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-6 w-6"
+            style={{ transform: `rotate(${-bearing}deg)` }}
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10.5" fill="none" stroke="#e2e2e2" />
+            <path d="M12 3.5 L15.2 12 H8.8 Z" fill="#D71920" />
+            <path d="M12 20.5 L8.8 12 H15.2 Z" fill="#9a9a9a" />
+            <circle cx="12" cy="12" r="1.3" fill="#fff" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => setLock((l) => !l)}
+          aria-pressed={lock}
+          aria-label="Kunci arah utara"
+          title={
+            lock
+              ? "Auto utara aktif (klik untuk melepas)"
+              : "Auto utara: kunci peta menghadap utara"
+          }
+          className={`grid h-7 w-7 place-items-center rounded-full border shadow-[0_4px_16px_rgba(32,32,32,0.14)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D71920] ${
+            lock
+              ? "border-[#D71920] bg-[#D71920] text-white"
+              : "border-[#e6e6e6] bg-white text-[#202020] hover:border-[#D71920]"
+          }`}
+        >
+          {lock ? (
+            <LockSimple className="h-3.5 w-3.5" />
+          ) : (
+            <LockSimpleOpen className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+    </div>
   );
 }

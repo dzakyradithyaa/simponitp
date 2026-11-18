@@ -39,6 +39,23 @@ const config: Config = {
         alert: "#b3261e",
         level: { rendah: "#4c8c4a", sedang: "#e0a526", tinggi: "#c0392b" },
       },
+      transitionTimingFunction: { apple: "cubic-bezier(0.32, 0.72, 0, 1)" },
+      keyframes: {
+        "rise-center": {
+          from: { transform: "translate(-50%, 16px)", opacity: "0" },
+          to: { transform: "translate(-50%, 0)", opacity: "1" },
+        },
+        "sheet-in": {
+          from: { transform: "translateY(28px) scale(0.98)", opacity: "0" },
+          to: { transform: "translateY(0) scale(1)", opacity: "1" },
+        },
+        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+      },
+      animation: {
+        "rise-center": "rise-center 420ms cubic-bezier(0.32,0.72,0,1)",
+        "sheet-in": "sheet-in 420ms cubic-bezier(0.32,0.72,0,1)",
+        "fade-in": "fade-in 300ms ease-out",
+      },
       fontFamily: {
         sans: ['"DM Sans"', "system-ui", "sans-serif"],
         display: ['"DM Sans"', "system-ui", "sans-serif"],

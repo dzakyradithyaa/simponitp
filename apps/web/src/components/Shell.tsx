@@ -112,6 +112,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  // Menu seluler menutup otomatis saat pindah halaman.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   // Tutup menu akun saat klik di luar atau tekan Esc.
   useEffect(() => {
     if (!profileOpen) return;
@@ -246,61 +251,83 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 />
               </button>
 
-              {profileOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full mt-2 w-60 overflow-hidden rounded-lg border border-[#e6e6e6] bg-white shadow-[0_8px_28px_rgba(32,32,32,0.15)]"
-                >
-                  <div className="flex items-center gap-3 border-b border-[#efefef] px-3 py-3">
-                    <Avatar src={avatarSrc} size={40} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">
-                        {user.full_name}
-                      </p>
-                      <p className="truncate text-xs text-[#6b6b6b]">
-                        @{user.username} · {roleLabel}
-                      </p>
-                    </div>
+              <div
+                role="menu"
+                aria-hidden={!profileOpen}
+                className={`absolute right-0 top-full mt-2 w-60 origin-top-right overflow-hidden rounded-lg border border-[#e6e6e6] bg-white shadow-[0_8px_28px_rgba(32,32,32,0.15)] transition-[transform,opacity,visibility] duration-[320ms] ease-apple ${
+                  profileOpen
+                    ? "visible scale-100 opacity-100"
+                    : "pointer-events-none invisible scale-95 opacity-0"
+                }`}
+              >
+                <div className="flex items-center gap-3 border-b border-[#efefef] px-3 py-3">
+                  <Avatar src={avatarSrc} size={40} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {user.full_name}
+                    </p>
+                    <p className="truncate text-xs text-[#6b6b6b]">
+                      @{user.username} · {roleLabel}
+                    </p>
                   </div>
-                  <button
-                    role="menuitem"
-                    onClick={logout}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#D71920] transition-colors hover:text-[#B8141A]"
-                  >
-                    <SignOut size={16} weight="light" />
-                    Keluar
-                  </button>
                 </div>
-              )}
+                <button
+                  role="menuitem"
+                  onClick={logout}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#D71920] transition-colors hover:text-[#B8141A]"
+                >
+                  <SignOut size={16} weight="light" />
+                  Keluar
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {mobileOpen && (
-          <div className="border-t border-[#e6e6e6] bg-white p-2 lg:hidden">
-            <nav className="space-y-0.5" aria-label="Menu seluler">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm transition-colors ${
-                      active
-                        ? "border-[#D71920] font-semibold text-[#202020]"
-                        : "border-transparent text-[#202020] hover:text-[#D71920]"
-                    }`}
-                  >
-                    <Icon size={18} weight="light" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-        )}
+        {/* Menu seluler: melayang di atas konten, tidak mendorongnya turun */}
+        <div
+          aria-hidden={!mobileOpen}
+          onClick={() => setMobileOpen(false)}
+          className={`fixed inset-x-0 bottom-0 top-14 bg-[#202020]/25 transition-opacity duration-[320ms] ease-apple lg:hidden ${
+            mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        />
+        <div
+          className={`absolute inset-x-0 top-full origin-top border-b border-[#e6e6e6] bg-white p-2 shadow-[0_16px_32px_rgba(32,32,32,0.14)] transition-[transform,opacity,visibility] duration-[380ms] ease-apple lg:hidden ${
+            mobileOpen
+              ? "visible translate-y-0 opacity-100"
+              : "pointer-events-none invisible -translate-y-3 opacity-0"
+          }`}
+        >
+          <nav className="space-y-0.5" aria-label="Menu seluler">
+            {navItems.map((item, i) => {
+              const Icon = item.icon;
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  style={{
+                    transitionDelay: mobileOpen ? `${i * 30}ms` : "0ms",
+                  }}
+                  className={`flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm transition-[transform,opacity,color] duration-[380ms] ease-apple ${
+                    mobileOpen
+                      ? "translate-y-0 opacity-100"
+                      : "-translate-y-1 opacity-0"
+                  } ${
+                    active
+                      ? "border-[#D71920] font-semibold text-[#202020]"
+                      : "border-transparent text-[#202020] hover:text-[#D71920]"
+                  }`}
+                >
+                  <Icon size={18} weight="light" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </header>
 
       <main
