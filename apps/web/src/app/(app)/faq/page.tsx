@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Panduan" };
 const FAQ: FaqItem[] = [
   {
     q: "Apa itu SIMPONI TP?",
-    a: "Platform pertanian presisi. Peta TIFF hasil survei UAV ditampilkan di atas peta OpenStreetMap, dibagi menjadi petak 1 hektare, diberi rekomendasi tindakan, lalu petaknya bisa diunduh sebagai KML/KMZ untuk perencanaan misi drone.",
+    a: "Platform pertanian presisi. Peta TIFF hasil survei UAV ditampilkan di atas peta OpenStreetMap, dibagi menjadi petak 1 hektare, diberi rekomendasi tindakan, lalu petaknya bisa diunduh sebagai KML, KMZ, atau POLY untuk perencanaan misi drone.",
   },
   {
     q: "Apa itu NDVI dan bagaimana membacanya?",
@@ -26,12 +26,12 @@ const FAQ: FaqItem[] = [
     a: "Buka Peta Saya, mode Lihat petak, lalu pilih tingkat intensitas pada panel Analisis rekomendasi. Anda akan melihat jenis tindakan, intensitas tindakan, dan intervalnya, serta petak mana saja yang masuk kategori itu.",
   },
   {
-    q: "Bagaimana mengunduh KML atau KMZ?",
-    a: "KML/KMZ hanya untuk diunduh. Pilih satu atau beberapa petak 100 × 100 m di peta (klik petaknya), lalu tekan KML atau KMZ. Centang opsi file terpisah bila perangkat lunak drone Anda memerlukan satu file per petak. Untuk area buatan sendiri, buat polygon di mode Custom petak, simpan, lalu unduh dari daftar polygon.",
+    q: "Bagaimana mengunduh KML, KMZ, atau POLY?",
+    a: "Pilih satu atau beberapa petak 100 × 100 m di peta, lalu tekan KML, KMZ, atau POLY. POLY otomatis dibuat sebagai ZIP berisi satu file per petak bila lebih dari satu petak dipilih. Gunakan format yang sesuai dengan perangkat lunak misi drone Anda.",
   },
   {
     q: "Apa beda KML dan KMZ?",
-    a: "KMZ adalah KML yang dikompres. Isi spasialnya sama. Gunakan format yang diterima perangkat lunak misi drone Anda, dan uji satu file dulu sebelum dipakai di lapangan karena kompatibilitas tiap perangkat lunak bisa berbeda.",
+    a: "KMZ adalah KML yang dikompres, sedangkan POLY berisi titik polygon dengan urutan latitude dan longitude. Gunakan format yang diterima perangkat lunak misi drone Anda, dan uji satu file dulu sebelum dipakai di lapangan.",
   },
   {
     q: "Apa itu versi peta?",

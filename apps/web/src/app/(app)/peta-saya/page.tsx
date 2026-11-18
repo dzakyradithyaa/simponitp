@@ -123,7 +123,7 @@ function ExportBar({
   optionLabel,
   disabled,
 }: {
-  hrefFor: (fmt: "kml" | "kmz", opt: boolean) => string;
+  hrefFor: (fmt: "kml" | "kmz" | "poly", opt: boolean) => string;
   optionLabel: string;
   disabled?: boolean;
 }) {
@@ -132,7 +132,7 @@ function ExportBar({
   return (
     <div>
       <div className="flex gap-2">
-        {(["kml", "kmz"] as const).map((fmt) => (
+        {(["kml", "kmz", "poly"] as const).map((fmt) => (
           <a
             key={fmt}
             className={`flex-1 uppercase ${BTN_RED} ${
@@ -689,7 +689,7 @@ export default function PetaSayaPage() {
     if (isMobile()) setPanelOpen(false);
   };
 
-  const cellsHref = (fmt: "kml" | "kmz", separate: boolean) => {
+  const cellsHref = (fmt: "kml" | "kmz" | "poly", separate: boolean) => {
     const q = new URLSearchParams({
       map_id: String(mapId),
       format: fmt,

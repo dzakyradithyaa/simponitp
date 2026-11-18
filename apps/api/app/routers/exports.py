@@ -10,12 +10,13 @@ from ..db import get_db
 from ..models import CustomPolygon, User
 from ..security import current_user, log_activity
 from ..services import geo, kml
+from ..services import poly
 from ..services.analysis import build_grid
 from .maps import get_map_or_404
 
 router = APIRouter(prefix="/api/exports", tags=["exports"])
 CELL_RE = re.compile(r"^R\d{2,}C\d{2,}$")
-MEDIA = {"kml": "application/vnd.google-earth.kml+xml", "kmz": "application/vnd.google-earth.kmz",
+MEDIA = {"kml": "application/vnd.google-earth.kml+xml", "kmz": "application/vnd.google-earth.kmz", "poly": "text/plain",
          "zip": "application/zip"}
 INTENSITY_LABEL = {"rendah": "Rendah", "sedang": "Sedang", "tinggi": "Tinggi"}
 
@@ -25,6 +26,8 @@ def slug(text: str) -> str:
 
 
 def _encode(fmt: str, doc_name: str, placemarks: list[dict], description: str | None = None) -> bytes:
+    if fmt == "poly":
+        return "\n".join(poly.build_poly(pm["geom"]).rstrip() for pm in placemarks).encode("utf-8") + b"\n"
     xml = kml.build_kml(doc_name, placemarks, description)
     return kml.to_kmz(xml) if fmt == "kmz" else xml.encode("utf-8")
 
@@ -47,7 +50,7 @@ def _cell_placemark(cell: geo.Cell, p: dict, map_name: str) -> dict:
 
 @router.get("/cells")
 def export_cells(
-    map_id: int, format: str = Query("kml", pattern="^(kml|kmz)$"), version_id: int | None = None,
+    map_id: int, format: str = Query("kml", pattern="^(kml|kmz|poly)$"), version_id: int | None = None,
     cell_ids: str | None = None, separate: bool = False, cell_size: int | None = Query(None, ge=10, le=1000),
     user: User = Depends(current_user), db: Session = Depends(get_db),
 ):
@@ -70,6 +73,8 @@ def export_cells(
         cells = [c for c in cells if c.cell_id in set(wanted)]
     if not cells:
         raise HTTPException(404, "Tidak ada petak untuk diekspor.")
+    if format == "poly" and len(cells) > 1:
+        separate = True
 
     base = slug(m.name)
     pms = [_cell_placemark(c, props[c.cell_id], m.name) for c in cells]
@@ -84,7 +89,7 @@ def export_cells(
 
 @router.get("/polygons/{polygon_id}")
 def export_polygon(
-    polygon_id: int, format: str = Query("kml", pattern="^(kml|kmz)$"), split: bool = False,
+    polygon_id: int, format: str = Query("kml", pattern="^(kml|kmz|poly)$"), split: bool = False,
     cell_size: int | None = Query(None, ge=10, le=1000), user: User = Depends(current_user), db: Session = Depends(get_db),
 ):
     """Export a custom polygon, or (split=true) the 1-ha blocks inside it."""

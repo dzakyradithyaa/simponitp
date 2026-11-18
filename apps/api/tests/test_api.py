@@ -240,6 +240,13 @@ def test_export_single_cell_kml_and_kmz(user, world):
     r = user.get("/api/exports/cells", params={"map_id": world["map"], "cell_ids": "R00C00,R01C03", "format": "kmz"})
     z = zipfile.ZipFile(io.BytesIO(r.content))
     assert len(ET.fromstring(z.read("doc.kml")).findall(".//k:Placemark", NS)) == 2
+    poly = user.get("/api/exports/cells", params={"map_id": world["map"], "cell_ids": "R00C00", "format": "poly"})
+    assert poly.status_code == 200 and poly.headers["content-disposition"].endswith(".poly\"")
+    points = [line.split() for line in poly.text.strip().splitlines()]
+    assert len(points) == 5 and points[0] == points[-1] and len(points[0]) == 2
+    poly_zip = user.get("/api/exports/cells", params={"map_id": world["map"], "cell_ids": "R00C00,R01C03", "format": "poly"})
+    z = zipfile.ZipFile(io.BytesIO(poly_zip.content))
+    assert len(z.namelist()) == 2 and all(n.endswith(".poly") for n in z.namelist())
 
 
 def test_export_all_and_separate_files(user, world):
