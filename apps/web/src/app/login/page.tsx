@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, LoaderCircle, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Wordmark } from "@/components/Brand";
 import { Notice } from "@/components/ui";
@@ -32,35 +32,45 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
-      <section className="chevron-field relative hidden flex-col justify-between p-12 lg:flex">
+      <section className="chevron-field relative hidden flex-col p-12 lg:flex">
         <Wordmark light />
-        <div>
+        <div className="mt-24">
           <h1 className="max-w-md text-5xl font-bold leading-[1.05] text-khaki-100">
             Lahan terpetakan.<br />Tindakan terukur.
           </h1>
           <p className="mt-5 max-w-md text-lg text-army-200">
-            Peta TIFF hasil UAV dibagi menjadi petak 1 hektare, lengkap dengan rekomendasi dan file KML/KMZ yang bisa diunduh untuk misi drone.
+            Pemetaan lahan untuk pertanian presisi.
           </p>
         </div>
-        <p className="text-sm text-army-300">Platform pertanian presisi berbasis UAV</p>
       </section>
 
-      <section className="flex items-center justify-center px-6 py-12">
-        <form onSubmit={submit} className="w-full max-w-sm" aria-label="Form login">
+      <section className="flex items-center justify-center bg-[#fafafa] px-6 py-12">
+        <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-army-100 bg-white p-7 shadow-[0_18px_50px_rgba(32,48,32,0.08)]" aria-label="Form login">
           <div className="mb-8 lg:hidden"><Wordmark /></div>
-          <h2 className="mb-1 text-3xl">Masuk</h2>
-          <p className="mb-6 text-army-700">Gunakan akun yang diberikan oleh admin.</p>
+          <div className="mb-7 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-3xl">Masuk ke akun Anda</h2>
+              <p className="mt-2 text-sm text-army-600">Kelola peta lahan Anda.</p>
+            </div>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold-50 text-gold-600" aria-hidden="true">
+              <KeyRound className="h-5 w-5" />
+            </div>
+          </div>
 
           {expired && !error && <div className="mb-4"><Notice>Sesi Anda berakhir. Silakan masuk kembali.</Notice></div>}
           {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
 
           <label className="field-label" htmlFor="username">Username</label>
-          <input id="username" className="input mb-4" value={username} onChange={(e) => setUsername(e.target.value)}
-                 autoComplete="username" autoCapitalize="none" required autoFocus />
+          <div className="group relative mb-4">
+            <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-army-400 transition-colors group-focus-within:text-gold-600" aria-hidden="true" />
+            <input id="username" className="input pl-10 transition-shadow duration-200 focus:shadow-[0_0_0_4px_rgba(191,158,83,0.12)]" value={username} onChange={(e) => setUsername(e.target.value)}
+                   autoComplete="username" autoCapitalize="none" required autoFocus />
+          </div>
 
           <label className="field-label" htmlFor="password">Password</label>
-          <div className="relative mb-4">
-            <input id="password" className="input pr-11" type={show ? "text" : "password"} value={password}
+          <div className="group relative mb-4">
+            <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-army-400 transition-colors group-focus-within:text-gold-600" aria-hidden="true" />
+            <input id="password" className="input pl-10 pr-11 transition-shadow duration-200 focus:shadow-[0_0_0_4px_rgba(191,158,83,0.12)]" type={show ? "text" : "password"} value={password}
                    onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
             <button type="button" onClick={() => setShow(!show)} aria-label={show ? "Sembunyikan password" : "Tampilkan password"}
                     className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-2 text-army-600 hover:text-army-900">
@@ -68,13 +78,17 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <label className="mb-6 flex items-center gap-2 text-sm text-army-800">
+          <label className="flex items-center gap-2 text-sm text-army-800">
             <input type="checkbox" className="h-4 w-4 accent-army-700" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
             Ingat saya di perangkat ini
           </label>
+          <p className="mb-6 mt-1 ml-6 text-xs text-army-600">Sesi standar berakhir setelah 1 jam tidak aktif.</p>
 
-          <button className="btn-primary w-full py-2.5" disabled={busy}>{busy ? "Memeriksa..." : "Masuk"}</button>
-          <p className="mt-4 text-xs text-army-600">Tanpa &ldquo;Ingat saya&rdquo;, sesi berakhir otomatis setelah 1 jam tanpa aktivitas.</p>
+          <button className="btn-primary group w-full py-2.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(191,158,83,0.24)] active:translate-y-0" disabled={busy} aria-busy={busy}>
+            {busy && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {busy ? "Memeriksa..." : "Masuk"}
+            {!busy && <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />}
+          </button>
         </form>
       </section>
     </div>
