@@ -79,6 +79,7 @@ function Content() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [q, setQ] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -98,9 +99,11 @@ function Content() {
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
     return (users ?? []).filter(
-      (u) => !k || `${u.full_name} ${u.username}`.toLowerCase().includes(k)
+      (u) =>
+        (roleFilter === "all" || u.role === roleFilter) &&
+        (!k || `${u.full_name} ${u.username}`.toLowerCase().includes(k))
     );
-  }, [users, q]);
+  }, [users, q, roleFilter]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -153,10 +156,13 @@ function Content() {
   const editing = form?.id != null;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-6xl">
+      <p className="mb-2 text-xs text-[#8a8a8a]">
+        Administrasi <span aria-hidden="true">/</span> Akun
+      </p>
       <PageHeader
-        title="Pengguna"
-        desc={`${users.length} akun terdaftar. Atur peran, status, dan kata sandi.`}
+        title={`Pengguna (${users.length})`}
+        desc="Kelola peran dan status akun."
       >
         <button
           className={BTN_PRIMARY}
@@ -169,89 +175,147 @@ function Content() {
         </button>
       </PageHeader>
 
-      <div className="mb-3 space-y-2">
+      <div className="mb-4 space-y-2">
         {error && <Notice kind="error">{error}</Notice>}
         {ok && <Notice kind="success">{ok}</Notice>}
       </div>
 
-      <div className="relative mb-3">
-        <MagnifyingGlass
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9a9a9a]"
-          aria-hidden="true"
-        />
-        <input
-          className={`${INPUT} pl-9`}
-          placeholder="Cari nama atau username..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          aria-label="Cari akun"
-        />
-      </div>
-
-      {shown.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[#d9d9d9] px-4 py-8 text-center text-sm text-[#6b6b6b]">
-          Tidak ada akun yang cocok.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {shown.map((u) => (
-            <li
-              key={u.id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#e6e6e6] bg-white p-3 transition hover:border-[#c9c9c9]"
+      <section className="overflow-hidden rounded-xl border border-[#e6e6e6] bg-white">
+        <div
+          role="group"
+          aria-label="Filter berdasarkan peran"
+          className="flex gap-6 border-b border-[#e6e6e6] px-5"
+        >
+          {[
+            { value: "all" as const, label: "Semua", count: users.length },
+            {
+              value: "admin" as const,
+              label: "Admin",
+              count: users.filter((u) => u.role === "admin").length,
+            },
+            {
+              value: "user" as const,
+              label: "User",
+              count: users.filter((u) => u.role === "user").length,
+            },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={roleFilter === tab.value}
+              onClick={() => setRoleFilter(tab.value)}
+              className={`-mb-px border-b-2 py-3 text-xs font-semibold transition ${FOCUS} ${
+                roleFilter === tab.value
+                  ? "border-[#D71920] text-[#202020]"
+                  : "border-transparent text-[#8a8a8a] hover:text-[#202020]"
+              }`}
             >
-              <span
-                className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold text-white ${
-                  u.is_active ? "bg-[#202020]" : "bg-[#b5b5b5]"
-                }`}
-              >
-                {u.full_name.charAt(0).toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1 basis-40">
-                <p className="flex flex-wrap items-center gap-1.5">
-                  <span className="truncate text-sm font-semibold">
-                    {u.full_name}
-                  </span>
-                  <Badge tone={u.role === "admin" ? "dark" : "neutral"}>
-                    {u.role === "admin" ? "Admin" : "User"}
-                  </Badge>
-                  <Badge tone={u.is_active ? "green" : "red"}>
-                    {u.is_active ? "Aktif" : "Nonaktif"}
-                  </Badge>
-                </p>
-                <p className="truncate text-xs text-[#6b6b6b]">
-                  @{u.username} · login terakhir {fmtDate(u.last_login_at)}
-                </p>
-              </div>
-              <div className="ml-auto flex gap-1.5">
-                <button
-                  className={`${BTN_GHOST} px-2.5`}
-                  onClick={() => {
-                    setForm({
-                      id: u.id,
-                      username: u.username,
-                      full_name: u.full_name,
-                      password: "",
-                      role: u.role,
-                      is_active: u.is_active,
-                    });
-                    setFormError(null);
-                  }}
-                >
-                  <PencilSimple className="h-4 w-4" aria-hidden="true" /> Ubah
-                </button>
-                <button
-                  className={`${BTN_GHOST} w-9 px-0 hover:border-[#D71920] hover:text-[#D71920]`}
-                  aria-label={`Hapus ${u.username}`}
-                  disabled={u.id === me?.id}
-                  onClick={() => remove(u)}
-                >
-                  <Trash className="h-4 w-4" />
-                </button>
-              </div>
-            </li>
+              {tab.label} <span className="ml-1 font-normal">{tab.count}</span>
+            </button>
           ))}
-        </ul>
-      )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="relative w-full max-w-sm">
+            <MagnifyingGlass
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9a9a9a]"
+              aria-hidden="true"
+            />
+            <input
+              className={`${INPUT} pl-9`}
+              placeholder="Cari nama atau username..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Cari akun"
+            />
+          </div>
+          <p className="text-xs text-[#6b6b6b]" aria-live="polite">
+            {shown.length} akun
+          </p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <thead className="bg-[#fafafa] text-[11px] font-semibold text-[#6b6b6b]">
+              <tr>
+                <th scope="col" className="px-5 py-3">Akun</th>
+                <th scope="col" className="px-4 py-3">Peran</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3">Terdaftar</th>
+                <th scope="col" className="px-4 py-3">Login terakhir</th>
+                <th scope="col" className="px-4 py-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#efefef]">
+              {shown.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-10 text-center text-sm text-[#6b6b6b]">
+                    Tidak ada akun yang cocok.
+                  </td>
+                </tr>
+              ) : (
+                shown.map((u) => (
+                  <tr key={u.id} className="transition hover:bg-[#fafafa]">
+                    <td className="px-5 py-3">
+                      <div className="flex min-w-52 items-center gap-3">
+                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold text-white ${u.is_active ? "bg-[#202020]" : "bg-[#b5b5b5]"}`}>
+                          {u.full_name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-[#202020]">{u.full_name}</span>
+                          <span className="block truncate text-xs text-[#6b6b6b]">@{u.username}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={u.role === "admin" ? "dark" : "neutral"}>
+                        {u.role === "admin" ? "Admin" : "User"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={u.is_active ? "green" : "red"}>
+                        {u.is_active ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-[#4a4a4a]">{fmtDate(u.created_at)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-[#6b6b6b]">
+                      {u.last_login_at ? fmtDate(u.last_login_at) : "Belum pernah"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          className={`${BTN_GHOST} px-2.5`}
+                          onClick={() => {
+                            setForm({
+                              id: u.id,
+                              username: u.username,
+                              full_name: u.full_name,
+                              password: "",
+                              role: u.role,
+                              is_active: u.is_active,
+                            });
+                            setFormError(null);
+                          }}
+                        >
+                          <PencilSimple className="h-4 w-4" aria-hidden="true" /> Ubah
+                        </button>
+                        <button
+                          className={`${BTN_GHOST} px-2.5 text-[#D71920] hover:border-[#D71920]`}
+                          aria-label={`Hapus ${u.username}`}
+                          disabled={u.id === me?.id}
+                          onClick={() => remove(u)}
+                        >
+                          <Trash className="h-4 w-4" aria-hidden="true" /> Hapus
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {form && (
         <Modal
