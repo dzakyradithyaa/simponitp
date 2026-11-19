@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ArrowRight,
   DownloadSimple,
   Polygon,
   SignIn,
@@ -10,9 +9,9 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminOnly } from "@/components/Shell";
+import { Pagination } from "@/components/Pagination";
 import {
   Badge,
-  BTN_GHOST,
   CARD,
   FOCUS,
   Notice,
@@ -41,13 +40,15 @@ const ACTION: Record<string, string> = {
   delete_user: "Menghapus akun",
   update_rule: "Mengubah aturan rekomendasi",
 };
-const PAGE = 30;
+const PAGE = 5;
 
 function Content() {
   const [users, setUsers] = useState<AdminUserRow[] | null>(null);
   const [filter, setFilter] = useState<number | null>(null);
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [loadingActivity, setLoadingActivity] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,17 +59,23 @@ function Content() {
   }, []);
 
   const loadActivity = useCallback(
-    async (offset: number) => {
+    async (pageIndex: number) => {
+      setLoadingActivity(true);
       const q = new URLSearchParams({
         limit: String(PAGE),
-        offset: String(offset),
+        offset: String(pageIndex * PAGE),
       });
-      if (filter != null) q.set("user_id", String(filter));
-      const r = await api.get<{ total: number; items: ActivityItem[] }>(
-        `/admin/activity?${q}`
-      );
-      setTotal(r.total);
-      setItems((cur) => (offset === 0 ? r.items : [...cur, ...r.items]));
+      try {
+        if (filter != null) q.set("user_id", String(filter));
+        const r = await api.get<{ total: number; items: ActivityItem[] }>(
+          `/admin/activity?${q}`
+        );
+        setTotal(r.total);
+        setItems(r.items);
+        setPage(pageIndex);
+      } finally {
+        setLoadingActivity(false);
+      }
     },
     [filter]
   );
@@ -93,9 +100,11 @@ function Content() {
   if (!users)
     return error ? <Notice kind="error">{error}</Notice> : <Spinner />;
   const who = users.find((u) => u.id === filter);
+  const pageCount = Math.max(1, Math.ceil(total / PAGE));
+  const firstItem = total ? page * PAGE + 1 : 0;
+  const lastItem = Math.min((page + 1) * PAGE, total);
 
   const stats = [
-    { label: "Pengguna", v: users.length, Icon: UsersThree },
     { label: "Login", v: sum.logins, Icon: SignIn },
     { label: "Upload", v: sum.uploads, Icon: UploadSimple },
     { label: "Polygon", v: sum.polygons, Icon: Polygon },
@@ -103,7 +112,7 @@ function Content() {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Administrasi"
         desc="Pantau aktivitas pengguna dan riwayat perubahan di platform."
@@ -114,23 +123,50 @@ function Content() {
         </div>
       )}
 
-      <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-        {stats.map(({ label, v, Icon }) => (
-          <div key={label} className={`${CARD} p-3.5`}>
-            <div className="flex items-center justify-between text-[#6b6b6b]">
-              <span className="text-xs font-medium">{label}</span>
-              <Icon className="h-4 w-4" aria-hidden="true" />
-            </div>
-            <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-[#202020]">
-              {v.toLocaleString("id-ID")}
+      <div className="mb-7 grid gap-3 lg:grid-cols-12">
+        <section
+          aria-label="Jumlah pengguna terdaftar"
+          className={`${CARD} flex min-h-36 flex-col justify-between p-5 sm:p-6 lg:col-span-4 lg:row-span-2 lg:min-h-48`}
+        >
+          <div className="flex items-center justify-between text-sm font-medium text-[#6b6b6b]">
+            <span>Pengguna terdaftar</span>
+            <UsersThree className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div>
+            <p className="text-5xl font-bold tabular-nums tracking-tight text-[#202020]">
+              {users.length.toLocaleString("id-ID")}
+            </p>
+            <p className="mt-2 text-xs text-[#6b6b6b]">
+              {users.filter((u) => u.is_active).length} aktif
+              <span aria-hidden="true"> · </span>
+              {users.filter((u) => !u.is_active).length} nonaktif
             </p>
           </div>
-        ))}
+        </section>
+
+        <div className="grid grid-cols-2 gap-3 lg:col-span-8">
+          {stats.map(({ label, v, Icon }) => (
+            <div
+              key={label}
+              className={`${CARD} flex min-h-[92px] items-center justify-between gap-3 p-4`}
+            >
+              <div>
+                <p className="text-xs font-medium text-[#6b6b6b]">{label}</p>
+                <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-[#202020]">
+                  {v.toLocaleString("id-ID")}
+                </p>
+              </div>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#f6f6f6] text-[#4a4a4a]">
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-        <section aria-labelledby="per-user">
-          <h2 id="per-user" className="mb-2 px-0.5">
+      <div className="grid items-start gap-6 lg:grid-cols-12">
+        <section aria-labelledby="per-user" className="lg:col-span-5">
+          <h2 id="per-user" className="mb-3 px-0.5">
             Aktivitas per pengguna
           </h2>
           <ul className="space-y-2">
@@ -191,8 +227,8 @@ function Content() {
           </ul>
         </section>
 
-        <section aria-labelledby="log">
-          <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
+        <section aria-labelledby="log" className="lg:col-span-7">
+          <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
             <h2 id="log" className="truncate">
               Log aktivitas{who ? ` · ${who.full_name}` : ""}
             </h2>
@@ -242,15 +278,20 @@ function Content() {
                 ))}
               </ol>
             )}
-            {items.length < total && (
-              <button
-                className={`${BTN_GHOST} mt-4 w-full`}
-                onClick={() =>
-                  loadActivity(items.length).catch((e) => setError(e.message))
-                }
-              >
-                Muat lebih banyak <ArrowRight className="h-4 w-4" />
-              </button>
+            {total > PAGE && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e6e6e6] pt-3">
+                <p className="text-xs text-[#6b6b6b]" aria-live="polite">
+                  Menampilkan {firstItem}–{lastItem} dari {total}
+                </p>
+                <Pagination
+                  page={page}
+                  pageCount={pageCount}
+                  disabled={loadingActivity}
+                  onPageChange={(nextPage) =>
+                    loadActivity(nextPage).catch((e) => setError(e.message))
+                  }
+                />
+              </div>
             )}
           </div>
         </section>
