@@ -32,7 +32,7 @@ export function Pagination({
   const buttonClass = `inline-flex h-9 min-w-9 items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium tabular-nums transition ${FOCUS}`;
 
   return (
-    <nav aria-label="Navigasi halaman log aktivitas" className="w-full sm:w-auto">
+    <nav aria-label="Navigasi halaman" className="w-full sm:w-auto">
       <ul className="flex items-center justify-center gap-1 sm:justify-end">
         <li>
           <button

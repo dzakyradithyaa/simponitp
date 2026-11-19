@@ -1,9 +1,10 @@
 "use client";
 
-import maplibregl, {
-  type GeoJSONSource,
-  type Map as MLMap,
-  type StyleSpecification,
+import * as maplibregl from "maplibre-gl";
+import type {
+  GeoJSONSource,
+  Map as MLMap,
+  StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Protocol } from "pmtiles";
@@ -26,6 +27,10 @@ import type {
   PolygonItem,
   Position,
 } from "@/lib/types";
+
+maplibregl.setWorkerUrl(
+  new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).toString()
+);
 
 // OpenStreetMap is the base map. The uploaded TIFF is served as a PMTiles archive (pmtiles:// protocol).
 const OSM =

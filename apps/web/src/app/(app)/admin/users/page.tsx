@@ -4,6 +4,7 @@ import {
   CaretDown,
   CaretUp,
   CaretUpDown,
+  Check,
   Key,
   MagnifyingGlass,
   PencilSimple,
@@ -11,6 +12,7 @@ import {
   UserPlus,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pagination } from "@/components/Pagination";
 import { AdminOnly } from "@/components/Shell";
 import {
   Badge,
@@ -27,6 +29,7 @@ import {
 import { api, fmtDate } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Role, User } from "@/lib/types";
+import * as Select from "@radix-ui/react-select";
 
 interface Form {
   id?: number;
@@ -104,6 +107,9 @@ function Content() {
   const [form, setForm] = useState<Form | null>(null);
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
     key: "account",
     direction: "asc",
@@ -129,6 +135,7 @@ function Content() {
     return (users ?? []).filter(
       (u) =>
         (roleFilter === "all" || u.role === roleFilter) &&
+        (statusFilter === "all" || u.is_active === (statusFilter === "active")) &&
         (!k || `${u.full_name} ${u.username}`.toLowerCase().includes(k))
     ).sort((a, b) => {
       let result = 0;
@@ -158,7 +165,12 @@ function Content() {
       }
       return sort.direction === "asc" ? result : -result;
     });
-  }, [users, q, roleFilter, sort]);
+  }, [users, q, roleFilter, statusFilter, sort]);
+
+  useEffect(() => setPage(0), [q, roleFilter, statusFilter]);
+  const pageCount = Math.max(1, Math.ceil(shown.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageUsers = shown.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const sortHeader = (label: string, key: SortKey) => {
     const active = sort.key === key;
@@ -273,42 +285,83 @@ function Content() {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-[#e6e6e6] bg-white">
-        <div
-          role="group"
-          aria-label="Filter berdasarkan peran"
-          className="flex gap-6 border-b border-[#e6e6e6] px-5"
-        >
-          {[
-            { value: "all" as const, label: "Semua", count: users.length },
-            {
-              value: "admin" as const,
-              label: "Admin",
-              count: users.filter((u) => u.role === "admin").length,
-            },
-            {
-              value: "user" as const,
-              label: "User",
-              count: users.filter((u) => u.role === "user").length,
-            },
-          ].map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              aria-pressed={roleFilter === tab.value}
-              onClick={() => setRoleFilter(tab.value)}
-              className={`-mb-px border-b-2 py-3 text-xs font-semibold transition ${FOCUS} ${
-                roleFilter === tab.value
-                  ? "border-[#D71920] text-[#202020]"
-                  : "border-transparent text-[#8a8a8a] hover:text-[#202020]"
-              }`}
-            >
-              {tab.label} <span className="ml-1 font-normal">{tab.count}</span>
-            </button>
-          ))}
-        </div>
+        <div className="flex flex-col gap-3 border-b border-[#e6e6e6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            role="group"
+            aria-label="Filter berdasarkan peran"
+            className="flex w-fit gap-1 rounded-lg bg-[#f5f5f5] p-1"
+          >
+            {[
+              { value: "all" as const, label: "Semua", count: users.length },
+              {
+                value: "admin" as const,
+                label: "Admin",
+                count: users.filter((u) => u.role === "admin").length,
+              },
+              {
+                value: "user" as const,
+                label: "User",
+                count: users.filter((u) => u.role === "user").length,
+              },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                aria-pressed={roleFilter === tab.value}
+                onClick={() => setRoleFilter(tab.value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${FOCUS} ${
+                  roleFilter === tab.value
+                    ? "bg-white text-[#202020] shadow-sm"
+                    : "text-[#777] hover:text-[#202020]"
+                }`}
+              >
+                {tab.label} <span className="ml-1 font-normal">{tab.count}</span>
+              </button>
+            ))}
+          </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="relative w-full max-w-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select.Root
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}
+            >
+              <Select.Trigger
+                aria-label="Filter berdasarkan status"
+                className={`inline-flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-[#d9d9d9] bg-white px-3 text-xs font-medium text-[#4a4a4a] transition hover:border-[#a8a8a8] sm:w-36 ${FOCUS}`}
+              >
+                <Select.Value />
+                <Select.Icon>
+                  <CaretDown className="h-3.5 w-3.5 text-[#777]" aria-hidden="true" />
+                </Select.Icon>
+              </Select.Trigger>
+              <Select.Portal>
+                <Select.Content
+                  position="popper"
+                  sideOffset={4}
+                  className="z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-[#e6e6e6] bg-white p-1 shadow-lg"
+                >
+                  <Select.Viewport>
+                    {[
+                      ["all", "Semua status"],
+                      ["active", "Aktif"],
+                      ["inactive", "Nonaktif"],
+                    ].map(([value, label]) => (
+                      <Select.Item
+                        key={value}
+                        value={value}
+                        className={`relative flex h-9 cursor-pointer select-none items-center rounded-md py-2 pl-8 pr-3 text-xs text-[#4a4a4a] outline-none data-[highlighted]:bg-[#f5f5f5] data-[highlighted]:text-[#202020] ${FOCUS}`}
+                      >
+                        <Select.ItemIndicator className="absolute left-2 inline-flex items-center text-[#D71920]">
+                          <Check className="h-3.5 w-3.5" weight="bold" aria-hidden="true" />
+                        </Select.ItemIndicator>
+                        <Select.ItemText>{label}</Select.ItemText>
+                      </Select.Item>
+                    ))}
+                  </Select.Viewport>
+                </Select.Content>
+              </Select.Portal>
+            </Select.Root>
+            <div className="relative w-full sm:w-64">
             <MagnifyingGlass
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9a9a9a]"
               aria-hidden="true"
@@ -321,9 +374,7 @@ function Content() {
               aria-label="Cari akun"
             />
           </div>
-          <p className="text-xs text-[#6b6b6b]" aria-live="polite">
-            {shown.length} akun
-          </p>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -346,7 +397,7 @@ function Content() {
                   </td>
                 </tr>
               ) : (
-                shown.map((u) => (
+                pageUsers.map((u) => (
                   <tr key={u.id} className="transition hover:bg-[#fafafa]">
                     <td className="px-5 py-3">
                       <div className="flex min-w-52 items-center gap-3">
@@ -404,6 +455,61 @@ function Content() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-[#e6e6e6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <p className="text-xs text-[#6b6b6b]" aria-live="polite">
+              Menampilkan {shown.length ? currentPage * pageSize + 1 : 0}–
+              {Math.min((currentPage + 1) * pageSize, shown.length)} dari {shown.length} akun
+            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#6b6b6b]">Baris</span>
+              <Select.Root
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setPage(0);
+                }}
+              >
+                <Select.Trigger
+                  aria-label="Jumlah akun per halaman"
+                  className={`inline-flex h-8 w-[68px] items-center justify-between gap-2 rounded-lg border border-[#d9d9d9] bg-white px-2.5 text-xs font-medium text-[#4a4a4a] transition hover:border-[#a8a8a8] ${FOCUS}`}
+                >
+                  <Select.Value />
+                  <Select.Icon>
+                    <CaretDown className="h-3.5 w-3.5 text-[#777]" aria-hidden="true" />
+                  </Select.Icon>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Content
+                    position="popper"
+                    sideOffset={4}
+                    className="z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-[#e6e6e6] bg-white p-1 shadow-lg"
+                  >
+                    <Select.Viewport>
+                      {[5, 10, 25].map((size) => (
+                        <Select.Item
+                          key={size}
+                          value={String(size)}
+                          className={`relative flex h-8 cursor-pointer select-none items-center rounded-md py-1.5 pl-8 pr-3 text-xs text-[#4a4a4a] outline-none data-[highlighted]:bg-[#f5f5f5] data-[highlighted]:text-[#202020] ${FOCUS}`}
+                        >
+                          <Select.ItemIndicator className="absolute left-2 inline-flex items-center text-[#D71920]">
+                            <Check className="h-3.5 w-3.5" weight="bold" aria-hidden="true" />
+                          </Select.ItemIndicator>
+                          <Select.ItemText>{size}</Select.ItemText>
+                        </Select.Item>
+                      ))}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            </div>
+          </div>
+          <Pagination
+            page={currentPage}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
         </div>
       </section>
 
