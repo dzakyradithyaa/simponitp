@@ -457,11 +457,11 @@ export default function LoginPage() {
         }
 
         .earth-surface {
-          background-image: url("https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg");
+          background-image: url("/earth-surface.webp");
         }
 
         .earth-clouds {
-          background-image: url("https://threejs.org/examples/textures/planets/earth_clouds_1024.png");
+          background-image: url("/earth-clouds.webp");
           opacity: 0.27;
           mix-blend-mode: screen;
         }
