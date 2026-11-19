@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   ArrowUUpLeft,
@@ -12,6 +12,7 @@ import {
   MapTrifold,
   NavigationArrow,
   DownloadSimple,
+  Info,
   IconContext,
   PencilRuler,
   SidebarSimple,
@@ -261,7 +262,7 @@ function ActionBar({
       className={`absolute left-1/2 z-[27] w-[min(360px,calc(100%-16px))] -translate-x-1/2 animate-rise-center rounded-xl border border-[#e6e6e6] bg-white p-2 text-[#202020] shadow-[0_8px_28px_rgba(32,32,32,0.16)] ${bottom} ${shift}`}
     >
       <p className="truncate text-xs font-semibold tabular-nums">{info}</p>
-      <p className="mb-1.5 text-[11px] leading-tight text-[#6b6b6b]">{hint}</p>
+      <p className="mb-1.5 truncate text-[11px] leading-tight text-[#6b6b6b]">{hint}</p>
       <div className="flex items-center gap-1.5">{children}</div>
     </div>
   );
@@ -320,11 +321,16 @@ export default function PetaSayaPage() {
   const [polyQ, setPolyQ] = useState("");
   const [mapQ, setMapQ] = useState("");
   const [analysisOpen, setAnalysisOpen] = useState(true);
+  const [cellPopup, setCellPopup] = useState<{
+    id: string;
+    lng: number;
+    lat: number;
+  } | null>(null);
   const [rasterOpacity, setRasterOpacity] = useState(0.6);
   const [editId, setEditId] = useState<number | null>(null);
   const [editRing, setEditRing] = useState<Position[]>([]);
   const [pin, setPin] = useState<PinTarget | null>(null);
-  const [tipsOpen, setTipsOpen] = useState(true);
+  const [tipsOpen, setTipsOpen] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>("osm");
   const [toolsOpen, setToolsOpen] = useState(true);
 
@@ -596,13 +602,17 @@ export default function PetaSayaPage() {
     [pending, grid, draft]
   );
 
-  const toggleCell = useCallback((id: string) => {
-    setSelected((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  }, []);
+  const toggleCell = useCallback((id: string, coords: Position) => {
+    const next = new Set(selected);
+    if (next.has(id)) {
+      next.delete(id);
+      setCellPopup((p) => (p?.id === id ? null : p));
+    } else {
+      next.add(id);
+      setCellPopup({ id, lng: coords[0], lat: coords[1] });
+    }
+    setSelected(next);
+  }, [selected]);
 
   const addPoint = useCallback((p: Position) => setDraft((d) => [...d, p]), []);
 
@@ -969,6 +979,36 @@ export default function PetaSayaPage() {
             draft={draft}
             fit={fit}
             onCellClick={toggleCell}
+            cellPopup={
+              cellPopup && selectedCells.some((c) => c.cell_id === cellPopup.id)
+                ? {
+                    ...cellPopup,
+                    content: (
+                      <AnalysisCard
+                        mode="petak"
+                        cells={[
+                          selectedCells.find(
+                            (c) => c.cell_id === cellPopup.id
+                          )!,
+                        ]}
+                        polygon={null}
+                        polyAnalysis={null}
+                        hasGrid={!!grid}
+                        cellSizeM={grid?.cell_size_m}
+                        rules={rules}
+                        open
+                        onToggle={() => setCellPopup(null)}
+                        popup
+                        surveyLabel={
+                          version
+                            ? `v${version.version} · ${version.label}`
+                            : undefined
+                        }
+                      />
+                    ),
+                  }
+                : null
+            }
             onPolygonClick={pickPolygon}
             onDrawPoint={addPoint}
           />
@@ -1245,12 +1285,10 @@ export default function PetaSayaPage() {
 
                 {mapId != null && grid && (
                   <p className="text-[11px] leading-4 text-[#6b6b6b]">
-                    Ukuran tiap petak:{" "}
-                    <strong className="font-semibold text-[#202020]">
-                      {Math.round(grid.cell_size_m)} ×{" "}
-                      {Math.round(grid.cell_size_m)} m
-                    </strong>{" "}
-                    (1 ha). Petak tepi lahan bisa lebih kecil.
+                    Petak {Math.round(grid.cell_size_m)} m
+                    <span className="ml-1 inline-flex" title="Luas nominal 1 ha; petak tepi lahan bisa lebih kecil." aria-label="Luas nominal 1 hektare; petak tepi bisa lebih kecil" tabIndex={0}>
+                      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
                   </p>
                 )}
 
@@ -1282,11 +1320,6 @@ export default function PetaSayaPage() {
                     locked
                   ) : (
                     <>
-                      <p className="mb-2.5 text-xs leading-5 text-[#5a5a5a]">
-                        Pilih intensitas untuk menandai petak di peta dan
-                        melihat tindakan yang disarankan.
-                      </p>
-
                       <div className="space-y-1.5">
                         {LEVELS.map((k) => {
                           const b = summary?.by_intensity[k];
@@ -1431,8 +1464,7 @@ export default function PetaSayaPage() {
                               className="mt-0.5 h-4 w-4 shrink-0 text-[#D71920]"
                               aria-hidden="true"
                             />
-                            Klik petak pada peta untuk memilihnya. Klik lagi
-                            untuk membatalkan.
+                            Klik petak untuk memilih; klik lagi untuk batal.
                           </p>
 
                           {intensity &&
@@ -1477,9 +1509,7 @@ export default function PetaSayaPage() {
                   ) : (
                     <>
                       <p className="mb-2.5 text-xs leading-5 text-[#3a3a3a]">
-                        {selectedIds.length
-                          ? `Ekspor ${selectedIds.length} petak terpilih.`
-                          : "Belum ada petak dipilih, jadi ekspor mencakup semua petak."}
+                        {selectedIds.length ? `${selectedIds.length} petak dipilih` : "Semua petak"}
                       </p>
 
                       <ExportBar
@@ -1809,7 +1839,7 @@ export default function PetaSayaPage() {
               </>
             )}
           </div>
-          <AnalysisCard
+          {mode === "custom" && <AnalysisCard
             mode={mode}
             cells={selectedCells}
             polygon={selectedPolygon}
@@ -1822,7 +1852,7 @@ export default function PetaSayaPage() {
             surveyLabel={
               version ? `v${version.version} · ${version.label}` : undefined
             }
-          />
+          />}
         </aside>
 
         <button

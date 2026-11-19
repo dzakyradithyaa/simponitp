@@ -16,6 +16,8 @@ import {
 } from "@/lib/basemap";
 import type { Basemap } from "@/lib/basemap";
 import { useEffect, useRef, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import type { ReactNode } from "react";
 import type {
   Bounds,
   GeoGeometry,
@@ -124,7 +126,8 @@ interface Props {
   drawing: boolean;
   draft: Position[];
   fit: { key: number; bounds: Bounds | null };
-  onCellClick: (id: string) => void;
+  onCellClick: (id: string, coords: Position) => void;
+  cellPopup?: { lng: number; lat: number; content: ReactNode } | null;
   onPolygonClick: (id: number) => void;
   onDrawPoint: (p: Position) => void;
 }
@@ -214,6 +217,44 @@ export default function MapCanvas(props: Props) {
   const [ready, setReady] = useState(false);
   const live = useRef(props); // latest props for long-lived event handlers
   live.current = props;
+  const popupRoot = useRef<Root | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const target = props.cellPopup;
+    if (!map || !target || !ready) {
+      popupRoot.current?.unmount();
+      popupRoot.current = null;
+      popupRef.current?.remove();
+      popupRef.current = null;
+      return;
+    }
+    const container = document.createElement("div");
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 18,
+      maxWidth: "320px",
+      className: "analysis-map-popup",
+    })
+      .setLngLat([target.lng, target.lat])
+      .setDOMContent(container)
+      .addTo(map);
+    const root = createRoot(container);
+    popupRoot.current = root;
+    popupRef.current = popup;
+    return () => {
+      root.unmount();
+      popupRoot.current = null;
+      popupRef.current = null;
+      popup.remove();
+    };
+  }, [props.cellPopup?.lng, props.cellPopup?.lat, ready]);
+
+  useEffect(() => {
+    if (props.cellPopup) popupRoot.current?.render(props.cellPopup.content);
+  }, [props.cellPopup?.content]);
 
   // --- create the map once ---
   useEffect(() => {
@@ -441,7 +482,11 @@ export default function MapCanvas(props: Props) {
         const f = map.queryRenderedFeatures(e.point, {
           layers: ["grid-fill"],
         })[0];
-        if (f) p.onCellClick(String(f.properties?.cell_id));
+        if (f)
+          p.onCellClick(String(f.properties?.cell_id), [
+            e.lngLat.lng,
+            e.lngLat.lat,
+          ]);
       } else {
         const f = map.queryRenderedFeatures(e.point, {
           layers: ["polys-fill"],
