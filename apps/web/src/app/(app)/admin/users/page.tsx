@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  CaretDown,
+  CaretUp,
+  CaretUpDown,
   Key,
   MagnifyingGlass,
   PencilSimple,
@@ -33,6 +36,7 @@ interface Form {
   role: Role;
   is_active: boolean;
 }
+type SortKey = "account" | "role" | "status" | "created_at" | "last_login_at";
 const BLANK: Form = {
   username: "",
   full_name: "",
@@ -40,6 +44,26 @@ const BLANK: Form = {
   role: "user",
   is_active: true,
 };
+
+function AccountStatus({ active }: { active: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+        active
+          ? "border-[#256b4a] bg-[#256b4a] text-white"
+          : "border-[#f0c4c6] bg-[#fff4f4] text-[#A3121A]"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`h-1.5 w-1.5 rounded-full ${
+          active ? "bg-white" : "bg-[#D71920]"
+        }`}
+      />
+      {active ? "Aktif" : "Nonaktif"}
+    </span>
+  );
+}
 
 function Segmented<T extends string>({
   value,
@@ -80,6 +104,10 @@ function Content() {
   const [form, setForm] = useState<Form | null>(null);
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
+  const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
+    key: "account",
+    direction: "asc",
+  });
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -102,8 +130,72 @@ function Content() {
       (u) =>
         (roleFilter === "all" || u.role === roleFilter) &&
         (!k || `${u.full_name} ${u.username}`.toLowerCase().includes(k))
+    ).sort((a, b) => {
+      let result = 0;
+      switch (sort.key) {
+        case "account":
+          result =
+            a.full_name.localeCompare(b.full_name, "id", { sensitivity: "base" }) ||
+            a.username.localeCompare(b.username);
+          break;
+        case "role":
+          result = a.role.localeCompare(b.role);
+          break;
+        case "status":
+          result = Number(!a.is_active) - Number(!b.is_active);
+          break;
+        case "created_at":
+          result = a.created_at.localeCompare(b.created_at);
+          break;
+        case "last_login_at":
+          if (!a.last_login_at || !b.last_login_at) {
+            if (!a.last_login_at && !b.last_login_at)
+              return a.username.localeCompare(b.username);
+            return a.last_login_at ? -1 : 1;
+          }
+          result = a.last_login_at.localeCompare(b.last_login_at);
+          break;
+      }
+      return sort.direction === "asc" ? result : -result;
+    });
+  }, [users, q, roleFilter, sort]);
+
+  const sortHeader = (label: string, key: SortKey) => {
+    const active = sort.key === key;
+    return (
+      <th
+        key={key}
+        scope="col"
+        aria-sort={
+          active ? (sort.direction === "asc" ? "ascending" : "descending") : undefined
+        }
+        className="px-4 py-3"
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setSort((current) => ({
+              key,
+              direction:
+                current.key === key && current.direction === "asc" ? "desc" : "asc",
+            }))
+          }
+          className={`inline-flex items-center gap-1 whitespace-nowrap text-left text-[11px] font-semibold transition hover:text-[#202020] ${FOCUS}`}
+        >
+          {label}
+          {active ? (
+            sort.direction === "asc" ? (
+              <CaretUp className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <CaretDown className="h-3.5 w-3.5" aria-hidden="true" />
+            )
+          ) : (
+            <CaretUpDown className="h-3.5 w-3.5 opacity-50" aria-hidden="true" />
+          )}
+        </button>
+      </th>
     );
-  }, [users, q, roleFilter]);
+  };
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -238,11 +330,11 @@ function Content() {
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-[#fafafa] text-[11px] font-semibold text-[#6b6b6b]">
               <tr>
-                <th scope="col" className="px-5 py-3">Akun</th>
-                <th scope="col" className="px-4 py-3">Peran</th>
-                <th scope="col" className="px-4 py-3">Status</th>
-                <th scope="col" className="px-4 py-3">Terdaftar</th>
-                <th scope="col" className="px-4 py-3">Login terakhir</th>
+                {sortHeader("Akun", "account")}
+                {sortHeader("Peran", "role")}
+                {sortHeader("Status", "status")}
+                {sortHeader("Terdaftar", "created_at")}
+                {sortHeader("Login terakhir", "last_login_at")}
                 <th scope="col" className="px-4 py-3 text-right">Aksi</th>
               </tr>
             </thead>
@@ -273,9 +365,7 @@ function Content() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={u.is_active ? "green" : "red"}>
-                        {u.is_active ? "Aktif" : "Nonaktif"}
-                      </Badge>
+                      <AccountStatus active={u.is_active} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-[#4a4a4a]">{fmtDate(u.created_at)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-[#6b6b6b]">
