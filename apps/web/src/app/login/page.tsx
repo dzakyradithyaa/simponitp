@@ -75,7 +75,7 @@ export default function LoginPage() {
         remember,
       });
 
-      window.location.href = "/dashboard";
+      window.location.href = "/peta-saya";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login gagal.");
       setBusy(false);
