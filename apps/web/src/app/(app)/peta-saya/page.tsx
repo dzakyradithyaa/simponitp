@@ -119,6 +119,79 @@ const isMobile = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 767px)").matches;
 
+function downloadPolygonPoly(polygon: PolygonItem) {
+  const geometry = polygon.geometry as unknown as {
+    type: string;
+    coordinates: Position[][] | Position[][][];
+  };
+
+  // Mission Planner membaca satu ring koordinat dalam format:
+  // # komentar
+  // latitude<TAB>longitude
+  // Setiap baris non-komentar harus berisi tepat dua angka.
+  // Parser Mission Planner tidak memahami ID ring, "END", atau MultiPolygon.
+  if (geometry.type !== "Polygon") return;
+
+  const rings = geometry.coordinates as Position[][];
+  if (rings.length !== 1) return;
+
+  const ring = rings[0];
+  if (!ring || ring.length < 3) return;
+
+  // Mission Planner menangani polygon sebagai satu daftar titik.
+  // Hapus titik penutup duplikat karena parser akan menghubungkan titik akhir
+  // kembali ke titik pertama saat menampilkan polygon.
+  const coordinates = [...ring];
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+
+  if (coordinates.length > 3 && first[0] === last[0] && first[1] === last[1]) {
+    coordinates.pop();
+  }
+
+  const lines = ["#Shap to Poly - Mission Planner"];
+
+  for (const point of coordinates) {
+    const lng = Number(point[0]);
+    const lat = Number(point[1]);
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      console.error(
+        "Koordinat polygon tidak valid untuk ekspor Mission Planner."
+      );
+      return;
+    }
+
+    // GeoJSON memakai urutan [longitude, latitude].
+    // Mission Planner meminta latitude lalu longitude.
+    lines.push(`${lat.toFixed(7)}\t${lng.toFixed(7)}`);
+  }
+
+  const safeName =
+    (polygon.name || "custom-polygon")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, "_") || "custom-polygon";
+
+  const blob = new Blob([lines.join("\r\n") + "\r\n"], {
+    type: "text/plain;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${safeName}.poly`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 function ExportBar({
   hrefFor,
   optionLabel,
@@ -262,7 +335,9 @@ function ActionBar({
       className={`absolute left-1/2 z-[27] w-[min(360px,calc(100%-16px))] -translate-x-1/2 animate-rise-center rounded-xl border border-[#e6e6e6] bg-white p-2 text-[#202020] shadow-[0_8px_28px_rgba(32,32,32,0.16)] ${bottom} ${shift}`}
     >
       <p className="truncate text-xs font-semibold tabular-nums">{info}</p>
-      <p className="mb-1.5 truncate text-[11px] leading-tight text-[#6b6b6b]">{hint}</p>
+      <p className="mb-1.5 truncate text-[11px] leading-tight text-[#6b6b6b]">
+        {hint}
+      </p>
       <div className="flex items-center gap-1.5">{children}</div>
     </div>
   );
@@ -602,17 +677,20 @@ export default function PetaSayaPage() {
     [pending, grid, draft]
   );
 
-  const toggleCell = useCallback((id: string, coords: Position) => {
-    const next = new Set(selected);
-    if (next.has(id)) {
-      next.delete(id);
-      setCellPopup((p) => (p?.id === id ? null : p));
-    } else {
-      next.add(id);
-      setCellPopup({ id, lng: coords[0], lat: coords[1] });
-    }
-    setSelected(next);
-  }, [selected]);
+  const toggleCell = useCallback(
+    (id: string, coords: Position) => {
+      const next = new Set(selected);
+      if (next.has(id)) {
+        next.delete(id);
+        setCellPopup((p) => (p?.id === id ? null : p));
+      } else {
+        next.add(id);
+        setCellPopup({ id, lng: coords[0], lat: coords[1] });
+      }
+      setSelected(next);
+    },
+    [selected]
+  );
 
   const addPoint = useCallback((p: Position) => setDraft((d) => [...d, p]), []);
 
@@ -1286,7 +1364,12 @@ export default function PetaSayaPage() {
                 {mapId != null && grid && (
                   <p className="text-[11px] leading-4 text-[#6b6b6b]">
                     Petak {Math.round(grid.cell_size_m)} m
-                    <span className="ml-1 inline-flex" title="Luas nominal 1 ha; petak tepi lahan bisa lebih kecil." aria-label="Luas nominal 1 hektare; petak tepi bisa lebih kecil" tabIndex={0}>
+                    <span
+                      className="ml-1 inline-flex"
+                      title="Luas nominal 1 ha; petak tepi lahan bisa lebih kecil."
+                      aria-label="Luas nominal 1 hektare; petak tepi bisa lebih kecil"
+                      tabIndex={0}
+                    >
                       <Info className="h-3.5 w-3.5" aria-hidden="true" />
                     </span>
                   </p>
@@ -1509,7 +1592,9 @@ export default function PetaSayaPage() {
                   ) : (
                     <>
                       <p className="mb-2.5 text-xs leading-5 text-[#3a3a3a]">
-                        {selectedIds.length ? `${selectedIds.length} petak dipilih` : "Semua petak"}
+                        {selectedIds.length
+                          ? `${selectedIds.length} petak dipilih`
+                          : "Semua petak"}
                       </p>
 
                       <ExportBar
@@ -1803,35 +1888,61 @@ export default function PetaSayaPage() {
                         Ekspor <strong>{selectedPolygon.name}</strong>.
                       </p>
 
-                      <button
-                        type="button"
-                        className={`w-full ${BTN_RED}`}
-                        disabled={
-                          editId === selectedPolygon.id ||
-                          !selectedAnalysis ||
-                          selectedAnalysis.hits.length === 0
-                        }
-                        onClick={() =>
-                          selectedAnalysis &&
-                          exportPolygonKml(
-                            selectedPolygon,
-                            selectedAnalysis,
-                            rules,
-                            version
-                              ? `v${version.version} · ${version.label}`
-                              : undefined
-                          )
-                        }
-                      >
-                        <DownloadSimple
-                          className="h-3.5 w-3.5"
-                          aria-hidden="true"
-                        />
-                        Unduh KML (hasil masking)
-                      </button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          className={`w-full ${BTN_RED}`}
+                          disabled={
+                            editId === selectedPolygon.id ||
+                            !selectedAnalysis ||
+                            selectedAnalysis.hits.length === 0
+                          }
+                          onClick={() =>
+                            selectedAnalysis &&
+                            exportPolygonKml(
+                              selectedPolygon,
+                              selectedAnalysis,
+                              rules,
+                              version
+                                ? `v${version.version} · ${version.label}`
+                                : undefined
+                            )
+                          }
+                        >
+                          <DownloadSimple
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          Unduh KML
+                        </button>
+                        <button
+                          type="button"
+                          className={`w-full ${BTN_OUTLINE}`}
+                          disabled={
+                            editId === selectedPolygon.id ||
+                            selectedPolygon.geometry.type !== "Polygon" ||
+                            selectedPolygon.geometry.coordinates.length !== 1
+                          }
+                          onClick={() => downloadPolygonPoly(selectedPolygon)}
+                        >
+                          <DownloadSimple
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          Unduh POLY
+                        </button>
+                      </div>
+                      {(selectedPolygon.geometry.type !== "Polygon" ||
+                        selectedPolygon.geometry.coordinates.length !== 1) && (
+                        <p className="mt-2 text-[11px] leading-4 text-amber-700">
+                          Ekspor POLY Mission Planner hanya mendukung satu
+                          polygon tanpa ring lubang. Geometri ini tetap dapat
+                          diekspor sebagai KML.
+                        </p>
+                      )}
                       <p className="mt-2 text-[11px] leading-4 text-[#6b6b6b]">
-                        Bentuk dipotong tepat pada petak yang dicakup, lengkap
-                        dengan warna dan analisis tiap petak.
+                        KML berisi hasil analisis polygon. POLY berisi batas
+                        polygon untuk dibuka di Mission Planner.
                       </p>
                     </>
                   )}
@@ -1839,20 +1950,22 @@ export default function PetaSayaPage() {
               </>
             )}
           </div>
-          {mode === "custom" && <AnalysisCard
-            mode={mode}
-            cells={selectedCells}
-            polygon={selectedPolygon}
-            polyAnalysis={selectedAnalysis}
-            hasGrid={!!grid}
-            cellSizeM={grid?.cell_size_m}
-            rules={rules}
-            open={analysisOpen}
-            onToggle={() => setAnalysisOpen((o) => !o)}
-            surveyLabel={
-              version ? `v${version.version} · ${version.label}` : undefined
-            }
-          />}
+          {mode === "custom" && (
+            <AnalysisCard
+              mode={mode}
+              cells={selectedCells}
+              polygon={selectedPolygon}
+              polyAnalysis={selectedAnalysis}
+              hasGrid={!!grid}
+              cellSizeM={grid?.cell_size_m}
+              rules={rules}
+              open={analysisOpen}
+              onToggle={() => setAnalysisOpen((o) => !o)}
+              surveyLabel={
+                version ? `v${version.version} · ${version.label}` : undefined
+              }
+            />
+          )}
         </aside>
 
         <button
