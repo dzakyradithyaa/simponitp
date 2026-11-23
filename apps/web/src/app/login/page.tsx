@@ -32,7 +32,6 @@ export default function LoginPage() {
   const [expired, setExpired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeHeadline, setActiveHeadline] = useState(0);
-  const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
     setExpired(new URLSearchParams(window.location.search).has("expired"));
@@ -45,26 +44,6 @@ export default function LoginPage() {
     }, 4000);
 
     return () => window.clearInterval(interval);
-  }, []);
-
-  // Earth rotation
-  useEffect(() => {
-    let animationFrame = 0;
-    let previousTime = 0;
-
-    const animate = (time: number) => {
-      if (previousTime) {
-        const delta = Math.min(time - previousTime, 50);
-        setRotation((prev) => (prev + delta * 0.0015) % 100);
-      }
-
-      previousTime = time;
-      animationFrame = window.requestAnimationFrame(animate);
-    };
-
-    animationFrame = window.requestAnimationFrame(animate);
-
-    return () => window.cancelAnimationFrame(animationFrame);
   }, []);
 
   // Prevent page scrolling
@@ -103,9 +82,6 @@ export default function LoginPage() {
     }
   }
 
-  const earthPosition = `${rotation}% center`;
-  const cloudPosition = `${(rotation * 1.12) % 100}% center`;
-
   return (
     <main className="login-screen">
       {/* EARTH EXPERIENCE */}
@@ -118,15 +94,8 @@ export default function LoginPage() {
           <div className="earth-atmosphere" />
 
           <div className="earth-object">
-            <div
-              className="earth-surface"
-              style={{ backgroundPosition: earthPosition }}
-            />
-
-            <div
-              className="earth-clouds"
-              style={{ backgroundPosition: cloudPosition }}
-            />
+            <div className="earth-surface" />
+            <div className="earth-clouds" />
 
             <div className="earth-light" />
             <div className="earth-shadow" />
@@ -453,17 +422,40 @@ export default function LoginPage() {
           background-size: 200% 100%;
           background-repeat: repeat-x;
           pointer-events: none;
-          will-change: background-position;
+          backface-visibility: hidden;
         }
 
         .earth-surface {
-          background-image: url("/earth-surface.webp");
+          background-image: url("https://www.solarsystemscope.com/textures/download/2k_earth_daymap.jpg");
+          background-position: 0% center;
+          animation: earthTextureRotate 90s linear infinite;
         }
 
         .earth-clouds {
-          background-image: url("/earth-clouds.webp");
-          opacity: 0.27;
+          background-image: url("https://www.solarsystemscope.com/textures/download/2k_earth_clouds.jpg");
+          background-position: 0% center;
+          opacity: 0.2;
           mix-blend-mode: screen;
+          animation: cloudTextureRotate 75s linear infinite;
+        }
+
+        /* Animasi dipindahkan ke CSS agar React tidak render ulang setiap frame. */
+        @keyframes earthTextureRotate {
+          from {
+            background-position: 0% center;
+          }
+          to {
+            background-position: 100% center;
+          }
+        }
+
+        @keyframes cloudTextureRotate {
+          from {
+            background-position: 0% center;
+          }
+          to {
+            background-position: 100% center;
+          }
         }
 
         .earth-light {
