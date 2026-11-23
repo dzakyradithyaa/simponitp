@@ -5,6 +5,8 @@ import {
   Check,
   CloudArrowUp,
   FileImage,
+  Info,
+  MapTrifold,
   PencilSimple,
   Trash,
   X,
@@ -418,9 +420,52 @@ function Content() {
         {/* ---- Kelola peta ---- */}
         <div className="min-w-0 space-y-3">
           {maps.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-[#d9d9d9] px-4 py-10 text-center text-sm text-[#6b6b6b]">
-              Belum ada peta. Unggah TIFF pertama di samping.
-            </p>
+            <section className={`${CARD} px-4 py-8 text-center sm:px-6 sm:py-10`} aria-labelledby="no-maps">
+              <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl bg-[#FDECEC] text-[#D71920]">
+                <MapTrifold className="h-6 w-6" aria-hidden="true" />
+              </div>
+              <div className="flex items-center justify-center gap-1.5">
+                <h2 id="no-maps">Belum ada peta</h2>
+                <div className="group relative">
+                  <button
+                    type="button"
+                    aria-label="Info unggah peta"
+                    aria-describedby="no-maps-help"
+                    className={`grid h-7 w-7 place-items-center rounded-md text-[#6b6b6b] hover:bg-[#f1f1f1] ${FOCUS}`}
+                  >
+                    <Info className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <div
+                    id="no-maps-help"
+                    role="tooltip"
+                    className="invisible absolute right-0 top-full z-10 w-44 pt-1 opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+                  >
+                    <p className="rounded-lg bg-[#202020] px-3 py-2 text-left text-xs leading-relaxed text-white shadow-md">
+                      Unggah GeoTIFF NDVI pertama untuk mulai membuat peta.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className={`${BTN_GHOST} mt-4`}
+                disabled={busyUpload}
+                onClick={() => input.current?.click()}
+              >
+                <FileImage className="h-4 w-4" aria-hidden="true" />
+                Pilih file GeoTIFF
+              </button>
+              <ol className="mx-auto mt-6 grid max-w-[480px] gap-3 border-t border-[#e6e6e6] pt-5 text-xs text-[#4a4a4a] sm:grid-cols-3">
+                {["Beri nama peta", "Unggah GeoTIFF", "Kelola versi peta"].map((step, index) => (
+                  <li key={step} className="flex items-center gap-2 text-left sm:justify-center">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#f1f1f1] font-semibold">
+                      {index + 1}
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </section>
           ) : (
             <>
               <ul
