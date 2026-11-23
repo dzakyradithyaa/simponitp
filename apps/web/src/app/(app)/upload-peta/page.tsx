@@ -544,71 +544,97 @@ function Content() {
                     </p>
                   ) : (
                     <ul className="space-y-2">
-                      {[...map.versions].reverse().map((v) => (
-                        <li
-                          key={v.id}
-                          className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-2.5 ${
-                            v.is_active
-                              ? "border-[#D71920]/40 bg-[#FDECEC]/40"
-                              : "border-[#e6e6e6]"
-                          }`}
-                        >
-                          <div className="min-w-0 flex-1 basis-48">
-                            <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
-                              <span className="truncate">
-                                v{v.version} · {v.label}
-                              </span>
-                              {v.is_active && <Badge tone="red">Aktif</Badge>}
-                              <Badge tone={STATUS[v.status].tone}>
-                                {STATUS[v.status].text}
-                              </Badge>
-                            </p>
-                            <p className="truncate text-xs text-[#6b6b6b]">
-                              {v.original_filename} · {fmtDate(v.created_at)}
-                              {v.stats && ` · NDVI ${fmtNdvi(v.stats.mean)}`}
-                            </p>
-                            {v.error && (
-                              <p className="mt-0.5 text-xs text-[#D71920]">
-                                {v.error}
-                              </p>
+                      {[...map.versions].reverse().map((v) => {
+                        const label = v.label.trim();
+                        const fileStem = v.original_filename.replace(/\.tiff?$/i, "");
+                        const showLabel = label && ![fileStem, v.original_filename].some(
+                          (name) => name.toLowerCase() === label.toLowerCase()
+                        );
+
+                        return (
+                          <li
+                            key={v.id}
+                            className={`rounded-lg border p-4 ${v.is_active ? "border-[#D71920]/40 bg-[#FDECEC]/40" : "border-[#e6e6e6]"}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h4 className="break-words text-sm font-semibold">
+                                  Versi {v.version}{showLabel ? ` · ${label}` : ""}
+                                </h4>
+                                {v.is_active && (
+                                  <Link href={`/peta-saya?map=${v.map_id}`} className={`${BTN_GHOST} mt-2`}>
+                                    <ArrowSquareOut className="h-4 w-4" aria-hidden="true" />
+                                    Tampil di Peta Saya
+                                  </Link>
+                                )}
+                              </div>
+                              <details className="relative shrink-0">
+                                <summary
+                                  aria-label={`Aksi versi ${v.version}`}
+                                  className={`${BTN_GHOST} w-9 cursor-pointer list-none px-0 [&::-webkit-details-marker]:hidden`}
+                                >
+                                  <span aria-hidden="true">⋯</span>
+                                </summary>
+                                <div className="absolute right-0 top-full z-10 mt-1 w-36 rounded-lg border border-[#e6e6e6] bg-white p-1 shadow-md">
+                                  <button
+                                    type="button"
+                                    className={`w-full rounded px-2 py-2 text-left text-xs hover:bg-[#f6f6f6] ${FOCUS}`}
+                                    onClick={(e) => {
+                                      e.currentTarget.closest("details")?.removeAttribute("open");
+                                      setRename({ kind: "version", id: v.id, mapId: map.id, value: v.label });
+                                    }}
+                                  >
+                                    Ubah label
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    className={`w-full rounded px-2 py-2 text-left text-xs text-[#D71920] hover:bg-[#FDECEC] disabled:opacity-50 ${FOCUS}`}
+                                    onClick={(e) => {
+                                      e.currentTarget.closest("details")?.removeAttribute("open");
+                                      removeVersion(v);
+                                    }}
+                                  >
+                                    Hapus versi
+                                  </button>
+                                </div>
+                              </details>
+                            </div>
+                            <dl className="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
+                              <div>
+                                <dt className="mb-1 text-[#6b6b6b]">Status file</dt>
+                                <dd><Badge tone={STATUS[v.status].tone}>{STATUS[v.status].text}</Badge></dd>
+                              </div>
+                              <div>
+                                <dt className="mb-1 text-[#6b6b6b]">Diunggah</dt>
+                                <dd>{fmtDate(v.created_at)}</dd>
+                              </div>
+                              <div className="min-w-0">
+                                <dt className="mb-1 text-[#6b6b6b]">File sumber</dt>
+                                <dd className="break-words">{v.original_filename}</dd>
+                              </div>
+                              {v.stats && (
+                                <div>
+                                  <dt className="mb-1 text-[#6b6b6b]">NDVI rata-rata</dt>
+                                  <dd>{fmtNdvi(v.stats.mean)}</dd>
+                                </div>
+                              )}
+                              {v.error && (
+                                <div className="break-words text-[#A3121A] sm:col-span-2">
+                                  <dt className="mb-1 font-semibold">Kendala</dt>
+                                  <dd>{v.error}</dd>
+                                </div>
+                              )}
+                            </dl>
+                            {!v.is_active && v.status === "ready" && (
+                              <button type="button" className={`${BTN_GHOST} mt-3`} disabled={busy} onClick={() => activate(v)}>
+                                <Check className="h-4 w-4" aria-hidden="true" />
+                                Jadikan versi aktif
+                              </button>
                             )}
-                          </div>
-                          <div className="ml-auto flex gap-1.5">
-                            <button
-                              className={`${BTN_GHOST} px-2.5`}
-                              disabled={
-                                busy || v.is_active || v.status !== "ready"
-                              }
-                              onClick={() => activate(v)}
-                            >
-                              <Check className="h-4 w-4" aria-hidden="true" />{" "}
-                              Aktifkan
-                            </button>
-                            <button
-                              className={`${BTN_GHOST} w-9 px-0`}
-                              aria-label={`Ubah label v${v.version}`}
-                              onClick={() =>
-                                setRename({
-                                  kind: "version",
-                                  id: v.id,
-                                  mapId: map.id,
-                                  value: v.label,
-                                })
-                              }
-                            >
-                              <PencilSimple className="h-4 w-4" />
-                            </button>
-                            <button
-                              className={`${BTN_DANGER} w-9 px-0`}
-                              aria-label={`Hapus v${v.version}`}
-                              disabled={busy}
-                              onClick={() => removeVersion(v)}
-                            >
-                              <Trash className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </li>
-                      ))}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </section>
