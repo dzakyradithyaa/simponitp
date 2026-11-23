@@ -7,7 +7,9 @@ const nextConfig = {
   experimental: { proxyTimeout: 300_000 }, // large GeoTIFF uploads
   async rewrites() {
     // The browser only talks to this origin; cookies stay first-party.
-    return [{ source: "/api/:path*", destination: `${API}/api/:path*` }];
+    return {
+      fallback: [{ source: "/api/:path*", destination: `${API}/api/:path*` }],
+    };
   },
   async headers() {
     return [{

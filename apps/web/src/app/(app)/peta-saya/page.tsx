@@ -119,7 +119,7 @@ const isMobile = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 767px)").matches;
 
-function downloadPolygonPoly(polygon: PolygonItem) {
+async function downloadPolygonPoly(polygon: PolygonItem) {
   const geometry = polygon.geometry as unknown as {
     type: string;
     coordinates: Position[][] | Position[][][];
@@ -191,6 +191,7 @@ function downloadPolygonPoly(polygon: PolygonItem) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  await api.post<void>(`/exports/polygons/${polygon.id}/poly-download`);
 }
 function ExportBar({
   hrefFor,
@@ -1923,7 +1924,12 @@ export default function PetaSayaPage() {
                             selectedPolygon.geometry.type !== "Polygon" ||
                             selectedPolygon.geometry.coordinates.length !== 1
                           }
-                          onClick={() => downloadPolygonPoly(selectedPolygon)}
+                          onClick={() => {
+                            setError(null);
+                            void downloadPolygonPoly(selectedPolygon).catch(() =>
+                              setError("Unduhan .poly tidak berhasil dicatat.")
+                            );
+                          }}
                         >
                           <DownloadSimple
                             className="h-3.5 w-3.5"

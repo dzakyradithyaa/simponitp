@@ -45,15 +45,32 @@ export const api = {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `/api${path}`);
       xhr.withCredentials = true;
-      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((100 * e.loaded) / e.total));
+      let timer: number;
+      const watchProgress = () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          reject(new ApiError(0, "Tidak ada respons atau kemajuan unggah selama 5 menit. Cek daftar versi sebelum mencoba lagi."));
+          xhr.abort();
+        }, 300_000);
+      };
+      xhr.upload.onprogress = (e) => {
+        watchProgress();
+        if (e.lengthComputable) onProgress?.(e.loaded === e.total ? 100 : Math.min(99, Math.floor(100 * e.loaded / e.total)));
+      };
+      xhr.upload.onload = watchProgress;
+      xhr.onloadend = () => window.clearTimeout(timer);
       xhr.onerror = () => reject(new ApiError(0, "Koneksi terputus saat mengunggah."));
       xhr.onload = () => {
         let data: unknown = null;
         try { data = JSON.parse(xhr.responseText); } catch { /* empty body */ }
         if (xhr.status >= 200 && xhr.status < 300) return resolve(data as T);
         if (xhr.status === 401) onUnauthorized(path);
-        reject(new ApiError(xhr.status, messageFrom(data, `Unggahan gagal (${xhr.status}).`)));
+        const fallback = xhr.status === 413
+          ? "Ukuran unggahan melebihi batas server."
+          : `Unggahan gagal (${xhr.status}).`;
+        reject(new ApiError(xhr.status, messageFrom(data, fallback)));
       };
+      watchProgress();
       xhr.send(form);
     });
   },

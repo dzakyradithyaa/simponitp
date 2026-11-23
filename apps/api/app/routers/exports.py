@@ -87,15 +87,30 @@ def export_cells(
     return _download(_encode(format, f"{m.name} - petak 1 ha", pms), format, f"{base}_{suffix}")
 
 
+def _exportable_polygon(polygon_id: int, user: User, db: Session) -> CustomPolygon:
+    p = db.get(CustomPolygon, polygon_id)
+    if not p or (user.role != "admin" and p.user_id != user.id):
+        raise HTTPException(404, "Polygon tidak ditemukan.")
+    return p
+
+
+@router.post("/polygons/{polygon_id}/poly-download", status_code=204)
+def record_poly_download(
+    polygon_id: int, user: User = Depends(current_user), db: Session = Depends(get_db),
+):
+    p = _exportable_polygon(polygon_id, user, db)
+    log_activity(db, user, "export_polygon", f"{p.name}: poly (petak custom)")
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.get("/polygons/{polygon_id}")
 def export_polygon(
     polygon_id: int, format: str = Query("kml", pattern="^(kml|kmz|poly)$"), split: bool = False,
     cell_size: int | None = Query(None, ge=10, le=1000), user: User = Depends(current_user), db: Session = Depends(get_db),
 ):
     """Export a custom polygon, or (split=true) the 1-ha blocks inside it."""
-    p = db.get(CustomPolygon, polygon_id)
-    if not p or (user.role != "admin" and p.user_id != user.id):
-        raise HTTPException(404, "Polygon tidak ditemukan.")
+    p = _exportable_polygon(polygon_id, user, db)
     geom = to_shape(p.geom)
     base = slug(p.name)
     if split:

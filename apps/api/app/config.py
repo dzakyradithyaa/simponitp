@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     grid_min_coverage: float = 0.05  # skip edge cells covering < 5% of a full cell
     max_cells: int = 20000
     max_polygon_ha: float = 5000
-    max_upload_mb: int = 1024
+    max_upload_mb: int = 10240
 
     # First admin (created only when the users table is empty)
     admin_username: str = "admin"

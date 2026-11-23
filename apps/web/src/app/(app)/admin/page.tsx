@@ -2,12 +2,12 @@
 
 import {
   DownloadSimple,
-  Polygon,
-  SignIn,
-  UploadSimple,
+  MapTrifold,
+  ShieldCheck,
+  User,
   UsersThree,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AdminOnly } from "@/components/Shell";
 import { Pagination } from "@/components/Pagination";
 import {
@@ -42,8 +42,14 @@ const ACTION: Record<string, string> = {
 };
 const PAGE = 5;
 
+type AdminOverview = {
+  users: AdminUserRow[];
+  total_maps: number;
+  total_exports: number;
+};
+
 function Content() {
-  const [users, setUsers] = useState<AdminUserRow[] | null>(null);
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [filter, setFilter] = useState<number | null>(null);
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -53,8 +59,8 @@ function Content() {
 
   useEffect(() => {
     api
-      .get<{ users: AdminUserRow[] }>("/admin/overview")
-      .then((r) => setUsers(r.users))
+      .get<AdminOverview>("/admin/overview")
+      .then(setOverview)
       .catch((e) => setError(e.message));
   }, []);
 
@@ -83,40 +89,24 @@ function Content() {
     loadActivity(0).catch((e) => setError(e.message));
   }, [loadActivity]);
 
-  const sum = useMemo(
-    () =>
-      (users ?? []).reduce(
-        (a, u) => ({
-          logins: a.logins + u.logins,
-          uploads: a.uploads + u.uploads,
-          polygons: a.polygons + u.polygons,
-          exports: a.exports + u.exports,
-        }),
-        { logins: 0, uploads: 0, polygons: 0, exports: 0 }
-      ),
-    [users]
-  );
-
-  if (!users)
+  if (!overview)
     return error ? <Notice kind="error">{error}</Notice> : <Spinner />;
+  const { users, total_maps, total_exports } = overview;
   const who = users.find((u) => u.id === filter);
   const pageCount = Math.max(1, Math.ceil(total / PAGE));
   const firstItem = total ? page * PAGE + 1 : 0;
   const lastItem = Math.min((page + 1) * PAGE, total);
 
   const stats = [
-    { label: "Login", v: sum.logins, Icon: SignIn },
-    { label: "Upload", v: sum.uploads, Icon: UploadSimple },
-    { label: "Polygon", v: sum.polygons, Icon: Polygon },
-    { label: "Ekspor", v: sum.exports, Icon: DownloadSimple },
+    { label: "Admin", v: users.filter((u) => u.role === "admin").length, Icon: ShieldCheck },
+    { label: "User", v: users.filter((u) => u.role === "user").length, Icon: User },
+    { label: "Total peta", v: total_maps, Icon: MapTrifold },
+    { label: "Total ekspor", v: total_exports, Icon: DownloadSimple },
   ];
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader
-        title="Administrasi"
-        desc="Pantau aktivitas pengguna dan riwayat perubahan di platform."
-      />
+      <PageHeader title="Administrasi" />
       {error && (
         <div className="mb-4">
           <Notice kind="error">{error}</Notice>
@@ -125,11 +115,11 @@ function Content() {
 
       <div className="mb-7 grid gap-3 lg:grid-cols-12">
         <section
-          aria-label="Jumlah pengguna terdaftar"
+          aria-label="Total akun"
           className={`${CARD} flex min-h-36 flex-col justify-between p-5 sm:p-6 lg:col-span-4 lg:row-span-2 lg:min-h-48`}
         >
           <div className="flex items-center justify-between text-sm font-medium text-[#6b6b6b]">
-            <span>Pengguna terdaftar</span>
+            <span>Total akun</span>
             <UsersThree className="h-5 w-5" aria-hidden="true" />
           </div>
           <div>

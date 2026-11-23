@@ -32,12 +32,14 @@ services:
       SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
       REMEMBER_ME_DAYS: ${REMEMBER_ME_DAYS:-7}
       GRID_CELL_SIZE_M: ${GRID_CELL_SIZE_M:-100}
-      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-1024}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10240}
       ENABLE_DOCS: ${ENABLE_DOCS:-true}
     volumes:
       - storage:/app/storage
+    ports:
+      - "127.0.0.1:8001:8000"
     expose:
-      - "8000" # reachable only from the web service; the browser goes through /api on port 3000
+      - "8000" # internal API port; local frontend uses host port 8001
 
   web:
     build:

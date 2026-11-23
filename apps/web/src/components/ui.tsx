@@ -4,7 +4,7 @@ import {
   SpinnerGap,
   WarningCircle,
   X,
-} from "@phosphor-icons/react";
+} from "@phosphor-icons/react/ssr";
 import type { Intensity } from "@/lib/types";
 
 export const LEVEL_COLOR: Record<Intensity, string> = {
@@ -109,22 +109,15 @@ export function Badge({
 
 export function PageHeader({
   title,
-  desc,
   children,
 }: {
   title: string;
-  desc?: string;
   children?: React.ReactNode;
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
       <div className="min-w-0">
         <h1>{title}</h1>
-        {desc && (
-          <p className="mt-1 max-w-xl text-[13px] leading-5 text-[#6b6b6b]">
-            {desc}
-          </p>
-        )}
       </div>
       {children && <div className="flex items-center gap-2">{children}</div>}
     </div>

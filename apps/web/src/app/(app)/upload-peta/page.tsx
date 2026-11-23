@@ -40,6 +40,7 @@ const STATUS = {
   ready: { text: "Siap", tone: "green" },
   failed: { text: "Gagal", tone: "red" },
 } as const;
+const MAX_TIFF_BYTES = 10 * 1024 ** 3;
 
 function Content() {
   const [maps, setMaps] = useState<MapItem[] | null>(null);
@@ -50,6 +51,7 @@ function Content() {
   const [files, setFiles] = useState<File[]>([]);
   const [over, setOver] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  const [uploadIssues, setUploadIssues] = useState<string[]>([]);
   const [uploaded, setUploaded] = useState<{
     ids: number[];
     rejected: UploadResult["rejected"];
@@ -93,9 +95,16 @@ function Content() {
   function addFiles(list: FileList | null) {
     if (!list) return;
     const next = [...files];
-    for (const f of Array.from(list))
+    const issues: string[] = [];
+    for (const f of Array.from(list)) {
+      if (!/\.tiff?$/i.test(f.name) || f.size === 0 || f.size > MAX_TIFF_BYTES) {
+        issues.push(`${f.name}: pilih file .tif atau .tiff yang tidak kosong dan berukuran maksimal 10 GB.`);
+        continue;
+      }
       if (!next.some((x) => x.name === f.name && x.size === f.size))
         next.push(f);
+    }
+    if (issues.length) setUploadIssues(issues);
     setFiles(next);
   }
 
@@ -128,6 +137,9 @@ function Content() {
         ids: res.created.map((v) => v.id),
         rejected: res.rejected,
       });
+      if (res.rejected.length) {
+        setUploadIssues(res.rejected.map(({ filename, error }) => `${filename}: ${error}`));
+      }
       setFiles([]);
       setLabel("");
       setName("");
@@ -138,7 +150,7 @@ function Content() {
       setSel(mapId);
       if (!list.some((m) => m.id === mapId)) setTarget("new");
     } catch (err) {
-      setError((err as Error).message);
+      setUploadIssues([(err as Error).message]);
       await load().catch(() => {});
     }
     setProgress(null);
@@ -198,10 +210,7 @@ function Content() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader
-        title="Upload peta"
-        desc="Unggah GeoTIFF NDVI. File diubah menjadi tile untuk Peta Saya lalu dibagi menjadi petak 1 hektare. Area peta diambil dari TIFF pertama."
-      />
+      <PageHeader title="Upload peta" />
       <div className="mb-4 space-y-2 empty:hidden">
         {error && <Notice kind="error">{error}</Notice>}
         {ok && <Notice kind="success">{ok}</Notice>}
@@ -446,15 +455,6 @@ function Content() {
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                className={`${BTN_GHOST} mt-4`}
-                disabled={busyUpload}
-                onClick={() => input.current?.click()}
-              >
-                <FileImage className="h-4 w-4" aria-hidden="true" />
-                Pilih file GeoTIFF
-              </button>
               <ol className="mx-auto mt-6 grid max-w-[480px] gap-3 border-t border-[#e6e6e6] pt-5 text-xs text-[#4a4a4a] sm:grid-cols-3">
                 {["Beri nama peta", "Unggah GeoTIFF", "Kelola versi peta"].map((step, index) => (
                   <li key={step} className="flex items-center gap-2 text-left sm:justify-center">
@@ -644,6 +644,16 @@ function Content() {
         </div>
       </div>
 
+      {uploadIssues.length > 0 && (
+        <Modal title="Kendala unggah peta" onClose={() => setUploadIssues([])}>
+          <ul className="list-disc space-y-2 break-words pl-5 text-sm" role="alert">
+            {uploadIssues.map((issue, index) => <li key={index}>{issue}</li>)}
+          </ul>
+          <button type="button" className={`${BTN_PRIMARY} mt-4`} onClick={() => setUploadIssues([])}>
+            Tutup
+          </button>
+        </Modal>
+      )}
       {rename && (
         <Modal
           title={rename.kind === "map" ? "Ubah nama peta" : "Ubah label versi"}

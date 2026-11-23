@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import ActivityLog, CustomPolygon, User
+from ..models import ActivityLog, CustomPolygon, MapArea, User
 from ..security import require_admin
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -26,7 +26,13 @@ def overview(_: User = Depends(require_admin), db: Session = Depends(get_db)):
             "last_login_at": u.last_login_at, "logins": c.get("login", 0), "uploads": c.get("upload_ndvi", 0),
             "polygons": polygons.get(u.id, 0), "exports": c.get("export_cells", 0) + c.get("export_polygon", 0),
         })
-    return {"users": out}
+    return {
+        "users": out,
+        "total_maps": db.query(MapArea).count(),
+        "total_exports": db.query(ActivityLog)
+        .filter(ActivityLog.action.in_(("export_cells", "export_polygon")))
+        .count(),
+    }
 
 
 @router.get("/activity")

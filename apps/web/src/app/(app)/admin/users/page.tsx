@@ -264,10 +264,7 @@ function Content() {
       <p className="mb-2 text-xs text-[#8a8a8a]">
         Administrasi <span aria-hidden="true">/</span> Akun
       </p>
-      <PageHeader
-        title={`Pengguna (${users.length})`}
-        desc="Kelola peran dan status akun."
-      >
+      <PageHeader title={`Pengguna (${users.length})`}>
         <button
           className={BTN_PRIMARY}
           onClick={() => {

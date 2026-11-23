@@ -54,10 +54,7 @@ const FAQ: FaqItem[] = [
 export default function FaqPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader
-        title="Panduan"
-        desc="Jawaban singkat untuk pertanyaan yang sering muncul."
-      />
+      <PageHeader title="Panduan" />
       <FaqList items={FAQ} />
     </div>
   );
